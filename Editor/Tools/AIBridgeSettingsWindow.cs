@@ -178,14 +178,14 @@ namespace AIBridge.Editor
                 CommandRegistry.Scan();
                 UpdateCommandCount();
                 SkillInstaller.GenerateSkillFile();
-                SkillInstaller.CopyToAgent();
+                SkillInstaller.OverrideSkill();
             };
 
             // Tools buttons
             rootVisualElement.Q<Button>("generate-skill").clicked += ()=>
             {
                 SkillInstaller.GenerateSkillFile();
-                SkillInstaller.CopyToAgent();
+                SkillInstaller.OverrideSkill();
             };
             rootVisualElement.Q<Button>("install-skill-agent").clicked += SkillInstaller.CopyToAgent;
             rootVisualElement.Q<Button>("clear-cache").clicked += ClearCache;
