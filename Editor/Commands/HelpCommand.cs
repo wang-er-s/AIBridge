@@ -22,10 +22,13 @@ AIBridgeCLI Help --command GameObjectCommand_Find  # 获取Find命令的详细�
             }
             else
             {
+                if (command == "Compile")
+                {
+                    yield return CommandResult.Success($"name:Compile\nDescription:编译项目并返回编译结果，如果错误为0且状态为idle则表明编译完成且没有错误");
+                }
                 if (!CommandRegistry.TryGetCommand(command, out var entry))
                 {
                     yield return CommandResult.Failure($"Command '{command}' not found");
-                    yield break;
                 }
                 yield return CommandResult.Success(BuildDetail(entry));
             }
