@@ -25,14 +25,7 @@ public static class PathHelper
             return _exchangeDir;
         }
 
-        // Method 1: Get from environment variable
-        var projectRoot = Environment.GetEnvironmentVariable("UNITY_PROJECT_ROOT");
-
-        // Method 2: Search up from current working directory to find Unity project
-        if (string.IsNullOrEmpty(projectRoot))
-        {
-            projectRoot = FindUnityProjectRoot(Directory.GetCurrentDirectory());
-        }
+        var projectRoot = FindUnityProjectRoot(AppContext.BaseDirectory);
 
         // Method 3: Fallback to exe directory relative path (legacy compatibility)
         if (string.IsNullOrEmpty(projectRoot))

@@ -14,7 +14,7 @@ namespace AIBridge.Editor
     public static class SkillInstaller
     {
         private const string SkillFileName = "SKILL.md";
-        private static readonly string[] AIDirectories = { ".cursor", ".agent", ".factory", ".claude", ".codex" };
+        private static readonly string[] AIDirectories = { ".agents", ".cursor", ".factory", ".claude", ".codex" };
         private static string SkillSourceFile => Path.Combine(AIBridge.PackageRoot, "Skill~", SkillFileName);
         private static string AgentSkillDir(string agentName) => Path.Combine(AIBridge.ProjectRoot, agentName, "skills", "aibridge");
         private static string AgentSkillFilePath(string agentName) => Path.Combine(AgentSkillDir(agentName), SkillFileName);
@@ -48,14 +48,14 @@ namespace AIBridge.Editor
 
             if (!foundAnyDir)
             {
-                var targetDir = AgentSkillDir(".agent");
+                var targetDir = AgentSkillDir(AIDirectories[0]);
                 if (!Directory.Exists(targetDir))
                 {
                     Directory.CreateDirectory(targetDir);
                 }
 
-                File.Copy(SkillSourceFile, AgentSkillFilePath(".agent"), true);
-                Debug.Log($"[AIBridge] No AI directories found, created .agent and copied skill file: {targetDir}");
+                File.Copy(SkillSourceFile, AgentSkillFilePath(AIDirectories[0]), true);
+                Debug.Log($"[AIBridge] No AI directories found, created {AIDirectories[0]} and copied skill file: {targetDir}");
             }
         }
         

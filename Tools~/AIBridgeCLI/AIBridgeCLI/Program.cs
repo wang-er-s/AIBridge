@@ -4,7 +4,7 @@ using Newtonsoft.Json;
 
 namespace AIBridgeCLI;
 
-internal class Program
+public class Program
 {
     public static int Main(string[] args)
     {
