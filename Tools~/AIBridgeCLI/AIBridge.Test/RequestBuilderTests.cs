@@ -60,6 +60,23 @@ namespace AIBridgeCLI.Tests
         }
 
         [Fact]
+        public void BuildRequest_CodeExecutePlayer_PreservesRuntimeRoutingOptions()
+        {
+            ParsedArgs parsed = ParsedArgs.Parse([
+                "CodeExecuteCommand_Execute",
+                "--code", "return Application.platform.ToString();",
+                "--url", "http://192.168.1.20:27182",
+                "--runtimeTimeout", "30000"
+            ]);
+
+            CommandRequest result = RequestBuilder.BuildRequest(parsed);
+
+            Assert.Equal("CodeExecuteCommand_Execute", result.type);
+            Assert.Equal("http://192.168.1.20:27182", result.@params["url"]);
+            Assert.Equal(30000L, result.@params["runtimeTimeout"]);
+        }
+
+        [Fact]
         public void ParseValue_TrueString_ReturnsTrue()
         {
             object? result = RequestBuilder.ParseValue("true");

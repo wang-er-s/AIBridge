@@ -1,6 +1,5 @@
 using System.IO;
 using System.Linq;
-using System.Text;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -21,8 +20,12 @@ namespace AIBridge.Editor
         private SliderInt _gifFps;
         private Slider _gifScale;
         private SliderInt _gifColorCount;
-        private Toggle _autoScan;
-        private TextField _scanAssemblies;
+        private Toggle _runtimeBridgeEnabled;
+        private Toggle _runtimeCodeExecution;
+        private Toggle _allowRuntimeInRelease;
+        private IntegerField _runtimeHttpPort;
+        private Label _hybridClrStatus;
+        private Button _installHybridClrButton;
 
         [MenuItem("Window/AIBridge")]
         private static void OpenWindow()
@@ -89,13 +92,17 @@ namespace AIBridge.Editor
             _gifScale = rootVisualElement.Q<Slider>("gif-scale");
             _gifColorCount = rootVisualElement.Q<SliderInt>("gif-color-count");
 
-            // Commands tab
-            _autoScan = rootVisualElement.Q<Toggle>("auto-scan");
-            _scanAssemblies = rootVisualElement.Q<TextField>("scan-assemblies");
-            
-            // Setup auto-scan toggle listener
-            _autoScan.RegisterValueChangedCallback(evt => UpdateRefreshButtonVisibility());
-            
+            _runtimeBridgeEnabled = rootVisualElement.Q<Toggle>("runtime-bridge-enabled");
+            _runtimeCodeExecution = rootVisualElement.Q<Toggle>("runtime-code-execution");
+            _allowRuntimeInRelease = rootVisualElement.Q<Toggle>("runtime-allow-release");
+            _runtimeHttpPort = rootVisualElement.Q<IntegerField>("runtime-http-port");
+            _hybridClrStatus = rootVisualElement.Q<Label>("hybridclr-status");
+            _installHybridClrButton = rootVisualElement.Q<Button>("install-hybridclr");
+            _runtimeBridgeEnabled.RegisterValueChangedCallback(_ => SaveRuntimeSettings());
+            _runtimeCodeExecution.RegisterValueChangedCallback(_ => SaveRuntimeSettings());
+            _allowRuntimeInRelease.RegisterValueChangedCallback(_ => SaveRuntimeSettings());
+            _runtimeHttpPort.RegisterValueChangedCallback(_ => SaveRuntimeSettings());
+
             UpdateCommandCount();
         }
 
@@ -109,21 +116,12 @@ namespace AIBridge.Editor
             _gifScale.value = GifRecorderSettings.DefaultScale;
             _gifColorCount.value = GifRecorderSettings.DefaultColorCount;
 
-            _scanAssemblies.value = EditorPrefs.GetString(
-                CommandRegistry.PrefKeyScanAssemblies, 
-                "Assembly-CSharp-Editor-firstpass;Assembly-CSharp");
+            _runtimeBridgeEnabled.SetValueWithoutNotify(AIBridgeRuntimeEditorSettings.EnableRuntimeBridge);
+            _runtimeCodeExecution.SetValueWithoutNotify(AIBridgeRuntimeEditorSettings.EnableRuntimeCodeExecution);
+            _allowRuntimeInRelease.SetValueWithoutNotify(AIBridgeRuntimeEditorSettings.AllowReleaseBuild);
+            _runtimeHttpPort.SetValueWithoutNotify(AIBridgeRuntimeEditorSettings.HttpPort);
+            UpdateHybridClrStatus();
 
-            if (!CommandRegistry.IsEditablePackage)
-            {
-                _autoScan.value = true;
-                _autoScan.SetEnabled(false);
-            }
-            else
-            {
-                _autoScan.value = EditorPrefs.GetBool(CommandRegistry.PrefKeyAutoScan, false);
-            }
-            
-            UpdateRefreshButtonVisibility();
         }
 
         private void SetupTabButtons()
@@ -131,11 +129,13 @@ namespace AIBridge.Editor
             var tabGeneral = rootVisualElement.Q<Button>("tab-general");
             var tabGif = rootVisualElement.Q<Button>("tab-gif");
             var tabCommands = rootVisualElement.Q<Button>("tab-commands");
+            var tabRuntime = rootVisualElement.Q<Button>("tab-runtime");
             var tabTools = rootVisualElement.Q<Button>("tab-tools");
 
             tabGeneral.clicked += () => SwitchTab("content-general", tabGeneral);
             tabGif.clicked += () => SwitchTab("content-gif", tabGif);
             tabCommands.clicked += () => SwitchTab("content-commands", tabCommands);
+            tabRuntime.clicked += () => SwitchTab("content-runtime", tabRuntime);
             tabTools.clicked += () => SwitchTab("content-tools", tabTools);
 
             // Set initial tab
@@ -148,12 +148,14 @@ namespace AIBridge.Editor
             rootVisualElement.Q<VisualElement>("content-general").style.display = DisplayStyle.None;
             rootVisualElement.Q<VisualElement>("content-gif").style.display = DisplayStyle.None;
             rootVisualElement.Q<VisualElement>("content-commands").style.display = DisplayStyle.None;
+            rootVisualElement.Q<VisualElement>("content-runtime").style.display = DisplayStyle.None;
             rootVisualElement.Q<VisualElement>("content-tools").style.display = DisplayStyle.None;
 
             // Remove active class from all buttons
             rootVisualElement.Q<Button>("tab-general").RemoveFromClassList("tab-active");
             rootVisualElement.Q<Button>("tab-gif").RemoveFromClassList("tab-active");
             rootVisualElement.Q<Button>("tab-commands").RemoveFromClassList("tab-active");
+            rootVisualElement.Q<Button>("tab-runtime").RemoveFromClassList("tab-active");
             rootVisualElement.Q<Button>("tab-tools").RemoveFromClassList("tab-active");
 
             // Show selected tab
@@ -172,14 +174,7 @@ namespace AIBridge.Editor
             rootVisualElement.Q<Button>("open-cli-dir").clicked += () => 
                 EditorUtility.RevealInFinder(Path.GetDirectoryName(AIBridge.BridgeCLI));
 
-            // Command buttons
-            rootVisualElement.Q<Button>("refresh-commands").clicked += () =>
-            {
-                CommandRegistry.Scan();
-                UpdateCommandCount();
-                SkillInstaller.GenerateSkillFile();
-                SkillInstaller.OverrideSkill();
-            };
+            _installHybridClrButton.clicked += InstallHybridClr;
 
             // Tools buttons
             rootVisualElement.Q<Button>("generate-skill").clicked += ()=>
@@ -207,15 +202,77 @@ namespace AIBridge.Editor
             GifRecorderSettings.DefaultScale = _gifScale.value;
             GifRecorderSettings.DefaultColorCount = _gifColorCount.value;
 
-            EditorPrefs.SetBool(CommandRegistry.PrefKeyAutoScan, _autoScan.value);
-            EditorPrefs.SetString(CommandRegistry.PrefKeyScanAssemblies, _scanAssemblies.value);
-
-            if (_autoScan.value)
-            {
-                CommandRegistry.Scan();
-            }
+            SaveRuntimeSettings();
 
             Debug.Log("[AIBridge] Settings saved.");
+        }
+
+        private void SaveRuntimeSettings()
+        {
+            if (_runtimeBridgeEnabled == null
+                || _runtimeCodeExecution == null
+                || _allowRuntimeInRelease == null
+                || _runtimeHttpPort == null)
+            {
+                return;
+            }
+
+            AIBridgeRuntimeEditorSettings.EnableRuntimeBridge = _runtimeBridgeEnabled.value;
+            AIBridgeRuntimeEditorSettings.EnableRuntimeCodeExecution = _runtimeCodeExecution.value;
+            AIBridgeRuntimeEditorSettings.AllowReleaseBuild = _allowRuntimeInRelease.value;
+            AIBridgeRuntimeEditorSettings.HttpPort = _runtimeHttpPort.value;
+            AIBridgeSelfRuntimeBuildProcessor.SyncDefinesForActiveTarget();
+        }
+
+        private void UpdateHybridClrStatus()
+        {
+            if (_hybridClrStatus == null)
+            {
+                return;
+            }
+
+            var installed = AIBridgeHybridClrUtility.IsInstalled();
+            var declared = AIBridgeHybridClrUtility.IsDeclaredInManifest();
+            _hybridClrStatus.text = installed
+                ? "HybridCLR installed"
+                : declared
+                    ? "HybridCLR added to manifest. Package Manager is resolving it."
+                    : "HybridCLR not installed. Player code execution is unavailable.";
+            _hybridClrStatus.style.color = installed
+                ? new StyleColor(new Color(0.45f, 0.8f, 0.45f))
+                : new StyleColor(new Color(0.9f, 0.5f, 0.3f));
+            _installHybridClrButton.SetEnabled(!installed);
+            _installHybridClrButton.text = installed
+                ? "HybridCLR Installed"
+                : declared
+                    ? "Resolve HybridCLR Again"
+                    : "Install HybridCLR From Git";
+            _runtimeCodeExecution.SetEnabled(installed);
+            _allowRuntimeInRelease.SetEnabled(installed);
+        }
+
+        private void InstallHybridClr()
+        {
+            _installHybridClrButton.SetEnabled(false);
+            bool changed;
+            string error;
+            if (!AIBridgeHybridClrUtility.Install(out changed, out error))
+            {
+                UpdateHybridClrStatus();
+                EditorUtility.DisplayDialog(
+                    "HybridCLR Installation Failed",
+                    error ?? "Failed to update Packages/manifest.json.",
+                    "OK");
+                return;
+            }
+
+            if (changed)
+            {
+                Debug.Log("[AIBridge] Added HybridCLR Git dependency to Packages/manifest.json.");
+            }
+
+            UnityEditor.PackageManager.Client.Resolve();
+            UpdateHybridClrStatus();
         }
 
         private void UpdateCommandCount()
@@ -223,15 +280,6 @@ namespace AIBridge.Editor
             var count = CommandRegistry.GetAll().Count();
             var label = rootVisualElement.Q<Label>("command-count");
             label.text = $"Total registered commands: {count}";
-        }
-
-        private void UpdateRefreshButtonVisibility()
-        {
-            var refreshButton = rootVisualElement.Q<Button>("refresh-commands");
-            if (refreshButton != null)
-            {
-                refreshButton.style.display = _autoScan.value ? DisplayStyle.None : DisplayStyle.Flex;
-            }
         }
 
         private void ClearCache()
@@ -250,10 +298,10 @@ namespace AIBridge.Editor
             if (EditorUtility.DisplayDialog("Reset Settings", 
                 "Are you sure you want to reset all settings to default?", "Yes", "No"))
             {
-                EditorPrefs.DeleteKey(CommandRegistry.PrefKeyAutoScan);
-                EditorPrefs.DeleteKey(CommandRegistry.PrefKeyScanAssemblies);
+                AIBridgeRuntimeEditorSettings.Reset();
                 
                 LoadSettings();
+                SaveRuntimeSettings();
                 Debug.Log("[AIBridge] Settings reset to default.");
                 EditorUtility.DisplayDialog("Success", "Settings reset to default.", "OK");
             }

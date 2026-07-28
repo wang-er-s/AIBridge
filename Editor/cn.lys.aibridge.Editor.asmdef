@@ -1,7 +1,9 @@
 {
     "name": "cn.lys.aibridge.Editor",
     "rootNamespace": "AIBridge.Editor",
-    "references": [],
+    "references": [
+        "cn.lys.aibridge.Runtime"
+    ],
     "includePlatforms": [
         "Editor"
     ],

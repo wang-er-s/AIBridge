@@ -13,6 +13,7 @@
             <ui:Button name="tab-general" text="General" class="tab-button tab-active" />
             <ui:Button name="tab-gif" text="GIF Recorder" class="tab-button" />
             <ui:Button name="tab-commands" text="Commands" class="tab-button" />
+            <ui:Button name="tab-runtime" text="Runtime" class="tab-button" />
             <ui:Button name="tab-tools" text="Tools" class="tab-button" />
         </ui:VisualElement>
         
@@ -60,16 +61,27 @@
             <ui:VisualElement name="content-commands" class="tab-content" style="display: none;">
                 <ui:VisualElement class="section">
                     <ui:Label text="Command Registration" class="section-title" />
-                    <ui:Toggle name="auto-scan" label="Auto-scan Assemblies" class="setting-item" />
-                    <ui:Label text="When enabled, commands are scanned at runtime. When disabled, commands are pre-registered in code for better performance." class="help-text" />
-                    <ui:TextField name="scan-assemblies" label="Scan Assemblies" multiline="true" class="setting-item assembly-field" />
-                    <ui:Label text="Separate multiple assemblies with semicolons (e.g., Assembly-CSharp;Assembly-CSharp-Editor)" class="help-text" />
+                    <ui:Label text="Commands are registered explicitly through CommandRegistry.Register. Assembly scanning is disabled." class="help-text" />
                 </ui:VisualElement>
                 
                 <ui:VisualElement class="section">
                     <ui:Label text="Registered Commands" class="section-title" />
                     <ui:Label name="command-count" text="Loading..." class="info-text" />
-                    <ui:Button name="refresh-commands" text="Refresh Command List" class="action-button" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+
+            <!-- Runtime Tab -->
+            <ui:VisualElement name="content-runtime" class="tab-content" style="display: none;">
+                <ui:VisualElement class="section">
+                    <ui:Label text="Mobile Runtime Code Execution" class="section-title" />
+                    <ui:Toggle name="runtime-bridge-enabled" label="Enable Runtime Bridge" class="setting-item" />
+                    <ui:Toggle name="runtime-code-execution" label="Enable Runtime Code Execution" class="setting-item" />
+                    <ui:IntegerField name="runtime-http-port" label="HTTP Port" class="setting-item" />
+                    <ui:Toggle name="runtime-allow-release" label="Allow In Release Build" class="setting-item" />
+                    <ui:Label name="hybridclr-status" class="info-text" />
+                    <ui:Button name="install-hybridclr" text="Install HybridCLR From Git" class="action-button" />
+                    <ui:Label text="Install HybridCLR from Git, then initialize it from HybridCLR/Installer. Development Builds are injected automatically after installation. Use CodeExecuteCommand_Execute with --url http://PHONE_IP:27182 to execute on the Player." class="help-text" />
+                    <ui:Label text="Warning: this feature accepts and executes DLLs from the local network without authentication. Release Build support must be enabled explicitly." class="help-text warning-text" />
                 </ui:VisualElement>
             </ui:VisualElement>
             

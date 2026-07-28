@@ -6,6 +6,7 @@ using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using AIBridge.Runtime;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 
@@ -15,17 +16,18 @@ using Microsoft.CodeAnalysis.CSharp;
 public sealed class CSharpCodeRunner
 {
     private readonly List<MetadataReference> references;
-    private const string AsyncMethodName = "ExecuteAsync";
+    private const string AsyncMethodName = AIBridgeRuntimeProtocol.AsyncEntryMethodName;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="CSharpCodeRunner"/> class.
     /// </summary>
-    public CSharpCodeRunner()
+    public CSharpCodeRunner(bool runtimeSafeReferences = false)
     {
         this.references = new List<MetadataReference>();
 
         var assemblies = AppDomain.CurrentDomain.GetAssemblies()
-            .Where(x => !x.IsDynamic && !string.IsNullOrEmpty(x.Location));
+            .Where(x => !x.IsDynamic && !string.IsNullOrEmpty(x.Location))
+            .Where(x => !runtimeSafeReferences || IsRuntimeCompilationReference(x));
 
         foreach (var assembly in assemblies)
         {
@@ -40,12 +42,47 @@ public sealed class CSharpCodeRunner
         }
     }
 
+    private static bool IsRuntimeCompilationReference(Assembly assembly)
+    {
+        var name = assembly.GetName().Name ?? string.Empty;
+        if (IsEditorAssemblyName(name)
+            || name.IndexOf(".Tests", StringComparison.OrdinalIgnoreCase) >= 0
+            || name.StartsWith("Microsoft.CodeAnalysis", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        try
+        {
+            return !assembly.GetReferencedAssemblies()
+                .Any(reference => IsEditorAssemblyName(reference.Name));
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool IsEditorAssemblyName(string name)
+    {
+        if (string.IsNullOrEmpty(name))
+        {
+            return false;
+        }
+
+        return string.Equals(name, "UnityEditor", StringComparison.OrdinalIgnoreCase)
+            || name.StartsWith("UnityEditor.", StringComparison.OrdinalIgnoreCase)
+            || name.EndsWith(".Editor", StringComparison.OrdinalIgnoreCase)
+            || name.EndsWith("-Editor", StringComparison.OrdinalIgnoreCase)
+            || name.IndexOf(".Editor.", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
     /// <summary>
     /// Wraps the specified code in a class with a static method.
     /// </summary>
     /// <param name="code">The code to wrap.</param>
     /// <returns>The wrapped code.</returns>
-    private string WrapCodeInClass(string code)
+    private string WrapCodeInClass(string code, bool catchExceptions = true)
     {
         var matches = Regex.Matches(code, $"(using.*?;)");
         StringBuilder sb = new StringBuilder();
@@ -58,24 +95,28 @@ public sealed class CSharpCodeRunner
         }
 
         code = Regex.Replace(code, "using.*?;", "");
-        var methodName = code.Contains("await ") ? AsyncMethodName : "Execute";
+        var methodName = AIBridgeRuntimeProtocol.GetEntryMethodName(code);
         var returnType = methodName == AsyncMethodName ? "async Task<object>" : "object";
-        return $@"
-{sb}
-using System;
-using System.Threading.Tasks;
-public static class CodeExecutor
-{{
-    public static {returnType} {methodName}()
-    {{
-        try{{
+        var methodBody = catchExceptions
+            ? $@"try{{
         {code}
         }}
         catch (Exception e)
         {{
             UnityEngine.Debug.LogError(e.ToString());
             return e.ToString();
-        }}
+        }}"
+            : code;
+
+        return $@"
+{sb}
+using System;
+using System.Threading.Tasks;
+public static class {AIBridgeRuntimeProtocol.EntryTypeName}
+{{
+    public static {returnType} {methodName}()
+    {{
+        {methodBody}
         return null;
     }}
 }}
@@ -124,6 +165,28 @@ public static class CodeExecutor
         }
     }
 
+    public EvaluationResult CompileForRuntime(string code)
+    {
+        if (string.IsNullOrEmpty(code))
+        {
+            return new EvaluationResult
+            {
+                Success = false,
+                ErrorMessage = "Code cannot be null or empty"
+            };
+        }
+
+        var wrappedCode = this.WrapCodeInClass(code, false);
+        var result = this.CompileCode(wrappedCode, false);
+        if (result.Success)
+        {
+            result.EntryTypeName = AIBridgeRuntimeProtocol.EntryTypeName;
+            result.EntryMethodName = AIBridgeRuntimeProtocol.GetEntryMethodName(code);
+        }
+
+        return result;
+    }
+
     private EvaluationResult ExecuteCompiledAssembly(Assembly assembly)
     {
         if (assembly == null)
@@ -135,17 +198,18 @@ public static class CodeExecutor
             };
         }
 
-        var type = assembly.GetType("CodeExecutor");
+        var type = assembly.GetType(AIBridgeRuntimeProtocol.EntryTypeName);
         if (type == null)
         {
             return new EvaluationResult
             {
                 Success = false,
-                ErrorMessage = "Failed to find the CodeExecutor type"
+                ErrorMessage = "Failed to find the runtime code entry type"
             };
         }
 
-        var method = type.GetMethod("Execute") ?? type.GetMethod(AsyncMethodName);
+        var method = type.GetMethod(AIBridgeRuntimeProtocol.EntryMethodName)
+            ?? type.GetMethod(AsyncMethodName);
         if (method == null)
         {
             return new EvaluationResult
@@ -244,7 +308,7 @@ public static class CodeExecutor
     /// </summary>
     /// <param name="code">The C# code to compile.</param>
     /// <returns>The result of the compilation.</returns>
-    private EvaluationResult CompileCode(string code)
+    private EvaluationResult CompileCode(string code, bool loadAssembly = true)
     {
         var options = new CSharpCompilationOptions(
             OutputKind.DynamicallyLinkedLibrary,
@@ -276,13 +340,14 @@ public static class CodeExecutor
                 };
             }
 
-            ms.Seek(0, SeekOrigin.Begin);
-            var assembly = Assembly.Load(ms.ToArray());
+            var assemblyBytes = ms.ToArray();
+            var assembly = loadAssembly ? Assembly.Load(assemblyBytes) : null;
 
             return new EvaluationResult
             {
                 Success = true,
-                CompiledAssembly = assembly
+                CompiledAssembly = assembly,
+                CompiledAssemblyBytes = assemblyBytes
             };
         }
     }
@@ -316,4 +381,10 @@ public sealed class EvaluationResult
     internal Assembly CompiledAssembly { get; set; }
 
     internal Task PendingTask { get; set; }
+
+    public byte[] CompiledAssemblyBytes { get; set; }
+
+    public string EntryTypeName { get; set; }
+
+    public string EntryMethodName { get; set; }
 }

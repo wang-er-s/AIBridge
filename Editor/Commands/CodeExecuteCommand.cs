@@ -2,12 +2,13 @@ using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
+using AIBridge.Runtime;
 using AIBridge.Editor;
 using UnityEngine;
 
 public static class CodeExecuteCommand
 {
-    [AIBridge("执行C#代码片段或脚本文件，支持编辑器或运行时。如果脚本内容过多更建议写入文件来运行，脚本文件放到AIBridgeCache/code中", 
+    [AIBridge("执行C#代码片段或脚本文件。不传 url 时在 Editor 执行，传入手机 Runtime URL 时编译并下发到 Player 执行。",
         example:@"
 Windows CMD 必须使用单引号包裹代码：
 AIBridgeCLI CodeExecuteCommand_Execute --code 'using UnityEngine; Debug.Log(""Hello"");' --raw
@@ -28,9 +29,13 @@ public static class CodeExecutor
     }}
 }}
 ")]
-    public static IEnumerator Execute([Description("要执行的代码")]string code = null, [Description("要执行的文件，需要完整路径")]string file = null)
+    public static IEnumerator Execute(
+        [Description("要执行的代码")] string code = null,
+        [Description("要执行的文件，需要完整路径")] string file = null,
+        [Description("手机 Runtime URL；为空时在 Editor 执行")] string url = null,
+        [Description("手机 Runtime 执行超时，单位毫秒")]
+        int runtimeTimeout = AIBridgeRuntimeProtocol.DefaultExecutionTimeoutMs)
     {
-        CSharpCodeRunner codeRunner = new CSharpCodeRunner();
         if (!string.IsNullOrEmpty(file))
         {
             if (File.Exists(file))
@@ -39,18 +44,28 @@ public static class CodeExecutor
                 if (string.IsNullOrWhiteSpace(code))
                 {
                     yield return CommandResult.Failure("File is empty.");
+                    yield break;
                 }
             }
             else
             {
                 yield return CommandResult.Failure("File is not exist.");
+                yield break;
             }
         }
         if (string.IsNullOrWhiteSpace(code))
         {
             yield return CommandResult.Failure("Code is null or empty.");
+            yield break;
         }
 
+        if (!string.IsNullOrWhiteSpace(url))
+        {
+            yield return ExecuteInPlayer(code, url, runtimeTimeout);
+            yield break;
+        }
+
+        var codeRunner = new CSharpCodeRunner();
         // Capture logs during execution
         var logMessages = new List<string>();
         var logHandler = new Application.LogCallback((logString, stackTrace, type) =>
@@ -64,20 +79,25 @@ public static class CodeExecutor
             logMessages.Add(prefix + logString);
         });
 
-        Application.logMessageReceived += logHandler;
-
-        var result = codeRunner.CompileAndExecute(code);
-        while (result != null && result.IsPending)
+        EvaluationResult result = null;
+        try
         {
-            result = codeRunner.ContinuePendingTask(result);
-            yield return null;
+            Application.logMessageReceived += logHandler;
+            result = codeRunner.CompileAndExecute(code);
+            while (result != null && result.IsPending)
+            {
+                result = codeRunner.ContinuePendingTask(result);
+                yield return null;
+            }
         }
-        
-        // Remove log handler
-        Application.logMessageReceived -= logHandler;
+        finally
+        {
+            Application.logMessageReceived -= logHandler;
+        }
+
         var output = string.Join("\n", logMessages);
         
-        if (!result.Success)
+        if (result == null || !result.Success)
         {
             yield return CommandResult.Failure($"Execution Failed:\n{result.ErrorMessage}\nOutput:\n{output}");
         }
@@ -86,5 +106,61 @@ public static class CodeExecutor
             var returnValue = result.ReturnValue == null ? "null" : result.ReturnValue.ToString();
             yield return CommandResult.Success($"ReturnValue:\n{returnValue}\nOutput:\n{output}");
         }
+    }
+
+    private static IEnumerator ExecuteInPlayer(string code, string url, int timeout)
+    {
+        if (!AIBridgeHybridClrUtility.IsInstalled())
+        {
+            yield return CommandResult.Failure(
+                "Player code execution requires HybridCLR. Install it first: "
+                + AIBridgeHybridClrUtility.GitUrl);
+            yield break;
+        }
+
+        if (!AIBridgeRuntimeEditorSettings.EnableRuntimeBridge
+            || !AIBridgeRuntimeEditorSettings.EnableRuntimeCodeExecution)
+        {
+            yield return CommandResult.Failure(
+                "Runtime code execution is disabled in Window/AIBridge Runtime settings.");
+            yield break;
+        }
+
+        var codeRunner = new CSharpCodeRunner(true);
+        var compileResult = codeRunner.CompileForRuntime(code);
+        if (!compileResult.Success)
+        {
+            yield return CommandResult.Failure("Runtime compilation failed:\n" + compileResult.ErrorMessage);
+            yield break;
+        }
+
+        var success = false;
+        object returnValue = null;
+        string error = null;
+        yield return RuntimeCodeExecuteClient.Execute(
+            url,
+            compileResult.CompiledAssemblyBytes,
+            compileResult.EntryTypeName,
+            compileResult.EntryMethodName,
+            timeout,
+            (completedSuccessfully, result, executeError) =>
+            {
+                success = completedSuccessfully;
+                returnValue = result;
+                error = executeError;
+            });
+
+        if (!success)
+        {
+            yield return CommandResult.Failure("Player execution failed:\n" + (error ?? "Unknown Runtime error."));
+            yield break;
+        }
+
+        yield return CommandResult.Success(new
+        {
+            target = "player",
+            runtimeUrl = url,
+            returnValue = returnValue
+        });
     }
 }
