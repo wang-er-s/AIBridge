@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using AIBridge.Runtime;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
@@ -186,6 +188,37 @@ namespace AIBridge.Editor
             if (!CommandRegistry.TryGetCommand(request.type, out var entry))
             {
                 WriteResult(CommandResult.FailureWithId(request.id, $"Unknown command: {request.type}"));
+                return true;
+            }
+
+            var runtimeUrl = request.GetParam<string>("url");
+            if (!string.IsNullOrEmpty(runtimeUrl) &&
+                AIBridgeRuntimeCommandRegistry.TryGet(entry.Name, out _))
+            {
+                var runtimeParameters = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+                if (request.@params != null)
+                {
+                    foreach (var parameter in request.@params)
+                    {
+                        if (string.Equals(parameter.Key, "url", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(parameter.Key, "runtimeTimeout", StringComparison.OrdinalIgnoreCase))
+                        {
+                            continue;
+                        }
+
+                        runtimeParameters[parameter.Key] = parameter.Value;
+                    }
+                }
+
+                var runtimeTimeout = AIBridgeRuntimeProtocol.NormalizeTimeoutMs(
+                    request.GetParam<int>("runtimeTimeout", AIBridgeRuntimeProtocol.DefaultExecutionTimeoutMs));
+                var runtimeCoroutine = RuntimeCodeExecuteClient.ExecuteCommand(
+                    runtimeUrl,
+                    entry.Name,
+                    runtimeParameters,
+                    runtimeTimeout);
+                EditorCoroutineRunner.Start(runtimeCoroutine, WriteResult, request.id);
+                AIBridgeLogger.LogDebug($"Command {request.id} ({request.type}) started async processing");
                 return true;
             }
 

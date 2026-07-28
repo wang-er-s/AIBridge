@@ -26,10 +26,12 @@ namespace AIBridge.Editor
         {
             _carrierInjected = false;
             if (AIBridgeRuntimeEditorSettings.EnableRuntimeBridge
+                && AIBridgeRuntimeEditorSettings.EnableRuntimeCodeExecution
                 && !AIBridgeHybridClrUtility.IsInstalled())
             {
                 Debug.LogWarning(
-                    "[AIBridgeSelf] HybridCLR is not installed. Mobile Runtime code execution will not be included.");
+                    "[AIBridgeSelf] HybridCLR is not installed. Runtime code execution will not be included; "
+                    + "generic Runtime commands remain available.");
             }
 
             var group = report == null
@@ -61,7 +63,8 @@ namespace AIBridge.Editor
             carrier.settings = new AIBridgeRuntimeSettings
             {
                 enableRuntimeBridge = AIBridgeRuntimeEditorSettings.EnableRuntimeBridge,
-                enableRuntimeCodeExecution = AIBridgeRuntimeEditorSettings.EnableRuntimeCodeExecution,
+                enableRuntimeCodeExecution = AIBridgeRuntimeEditorSettings.EnableRuntimeCodeExecution
+                    && AIBridgeHybridClrUtility.IsInstalled(),
                 allowInReleaseBuild = AIBridgeRuntimeEditorSettings.AllowReleaseBuild,
                 httpBindAddress = "0.0.0.0",
                 httpPort = AIBridgeRuntimeEditorSettings.HttpPort
@@ -83,8 +86,7 @@ namespace AIBridge.Editor
 
             var defines = ParseDefines(PlayerSettings.GetScriptingDefineSymbolsForGroup(group));
             var changed = false;
-            var runtimeAvailable = AIBridgeRuntimeEditorSettings.EnableRuntimeBridge
-                && AIBridgeHybridClrUtility.IsInstalled();
+            var runtimeAvailable = AIBridgeRuntimeEditorSettings.EnableRuntimeBridge;
             changed |= SetDefine(defines, AutoInjectDisabledDefine, !runtimeAvailable);
             changed |= SetDefine(
                 defines,
@@ -100,8 +102,7 @@ namespace AIBridge.Editor
 
         private static bool ShouldInject(BuildReport report)
         {
-            if (!AIBridgeRuntimeEditorSettings.EnableRuntimeBridge
-                || !AIBridgeHybridClrUtility.IsInstalled())
+            if (!AIBridgeRuntimeEditorSettings.EnableRuntimeBridge)
             {
                 return false;
             }

@@ -248,7 +248,6 @@ namespace AIBridge.Editor
                     ? "Resolve HybridCLR Again"
                     : "Install HybridCLR From Git";
             _runtimeCodeExecution.SetEnabled(installed);
-            _allowRuntimeInRelease.SetEnabled(installed);
         }
 
         private void InstallHybridClr()

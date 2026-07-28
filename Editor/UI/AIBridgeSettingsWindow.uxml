@@ -80,8 +80,8 @@
                     <ui:Toggle name="runtime-allow-release" label="Allow In Release Build" class="setting-item" />
                     <ui:Label name="hybridclr-status" class="info-text" />
                     <ui:Button name="install-hybridclr" text="Install HybridCLR From Git" class="action-button" />
-                    <ui:Label text="Install HybridCLR from Git, then initialize it from HybridCLR/Installer. Development Builds are injected automatically after installation. Use CodeExecuteCommand_Execute with --url http://PHONE_IP:27182 to execute on the Player." class="help-text" />
-                    <ui:Label text="Warning: this feature accepts and executes DLLs from the local network without authentication. Release Build support must be enabled explicitly." class="help-text warning-text" />
+                    <ui:Label text="Development Builds include Runtime commands automatically. HybridCLR is only required for CodeExecuteCommand_Execute. Pass --url http://PHONE_IP:27182 to route supported commands to the Player." class="help-text" />
+                    <ui:Label text="Warning: Runtime commands and optional DLL execution accept local-network requests without authentication. Release Build support must be enabled explicitly." class="help-text warning-text" />
                 </ui:VisualElement>
             </ui:VisualElement>
             

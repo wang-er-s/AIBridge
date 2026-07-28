@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -11,15 +12,27 @@ namespace AIBridge.Runtime
     {
         public const string HealthPath = "/aibridge-self/health";
         public const string CodeExecutePath = "/aibridge-self/code/execute";
+        public const string CommandExecutePath = "/aibridge-self/command/execute";
+        public const string ArtifactPathPrefix = "/aibridge-self/artifacts/";
         public const string CodeExecuteAction = "aibridge-self.code.execute";
+        public const string CommandExecuteAction = "aibridge-self.command.execute";
         public const string EntryTypeName = "CodeExecutor";
         public const string EntryMethodName = "Execute";
         public const string AsyncEntryMethodName = "ExecuteAsync";
         public const int DefaultHttpPort = 27182;
         public const int DefaultExecutionTimeoutMs = 30000;
+        public const int MinExecutionTimeoutMs = 100;
+        public const int MaxExecutionTimeoutMs = 300000;
         public const int MaxAssemblyBytes = 16 * 1024 * 1024;
         public const int MaxRequestBytes = 24 * 1024 * 1024;
         public const int MaxResultBytes = 1024 * 1024;
+        public const long MaxArtifactBytes = 64L * 1024L * 1024L;
+
+        public static int NormalizeTimeoutMs(int timeoutMs)
+        {
+            var normalized = timeoutMs <= 0 ? DefaultExecutionTimeoutMs : timeoutMs;
+            return Math.Max(MinExecutionTimeoutMs, Math.Min(MaxExecutionTimeoutMs, normalized));
+        }
 
         public static string GetEntryMethodName(string code)
         {
@@ -61,6 +74,19 @@ namespace AIBridge.Runtime
     }
 
     /// <summary>
+    /// 来自远端的 Runtime 内建命令请求。
+    /// </summary>
+    [Serializable]
+    public class AIBridgeSelfCommandExecuteRequest
+    {
+        public string id;
+        public string action;
+        public string type;
+        public Dictionary<string, object> parameters;
+        public int timeoutMs;
+    }
+
+    /// <summary>
     /// Runtime Bridge 的统一响应。errorCode 非空表示执行失败。
     /// </summary>
     [Serializable]
@@ -83,5 +109,7 @@ namespace AIBridge.Runtime
         public string service;
         public bool ready;
         public string endpoint;
+        public string commandEndpoint;
+        public string artifactEndpoint;
     }
 }

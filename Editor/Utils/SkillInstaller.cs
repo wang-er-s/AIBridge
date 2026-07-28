@@ -93,7 +93,7 @@ namespace AIBridge.Editor
             var entries = CommandRegistry.GetAll().ToList();
             if (entries.Count == 0)
             {
-                EditorUtility.DisplayDialog("Error", "No commands registered. Please scan assemblies first.", "OK");
+                EditorUtility.DisplayDialog("Error", "No commands registered.", "OK");
                 return;
             }
 

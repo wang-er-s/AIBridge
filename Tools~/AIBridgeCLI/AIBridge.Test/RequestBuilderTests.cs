@@ -77,6 +77,26 @@ namespace AIBridgeCLI.Tests
         }
 
         [Fact]
+        public void BuildRequest_MigratedCommand_PreservesRuntimeRoutingOptions()
+        {
+            ParsedArgs parsed = ParsedArgs.Parse([
+                "EditorCommand_Log",
+                "--message", "Hello Player",
+                "--logType", "Warning",
+                "--url", "http://192.168.1.20:27182",
+                "--runtimeTimeout", "15000"
+            ]);
+
+            CommandRequest result = RequestBuilder.BuildRequest(parsed);
+
+            Assert.Equal("EditorCommand_Log", result.type);
+            Assert.Equal("Hello Player", result.@params["message"]);
+            Assert.Equal("Warning", result.@params["logType"]);
+            Assert.Equal("http://192.168.1.20:27182", result.@params["url"]);
+            Assert.Equal(15000L, result.@params["runtimeTimeout"]);
+        }
+
+        [Fact]
         public void ParseValue_TrueString_ReturnsTrue()
         {
             object? result = RequestBuilder.ParseValue("true");

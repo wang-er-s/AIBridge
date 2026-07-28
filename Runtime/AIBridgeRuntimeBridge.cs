@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
@@ -15,13 +16,12 @@ namespace AIBridge.Runtime
 {
     public sealed class AIBridgeRuntimeBridge : MonoBehaviour
     {
-        private const int MinTimeoutMs = 100;
-        private const int MaxTimeoutMs = 300000;
         private const int MaxResultDepth = 8;
         private const int MaxCollectionItems = 512;
         private const int MaxPendingCommands = 8;
 
         private readonly Queue<PendingCommand> _commands = new Queue<PendingCommand>();
+        private readonly HashSet<PendingCommand> _activeCommands = new HashSet<PendingCommand>();
         private HttpServer _server;
         private bool _initialized;
         private int _pendingCommandCount;
@@ -31,6 +31,8 @@ namespace AIBridge.Runtime
         private void Awake()
         {
             DontDestroyOnLoad(gameObject);
+            AIBridgeRuntimeCommandRegistry.EnsureBuiltInsRegistered();
+            AIBridgeRuntimeScreenshotCommands.Initialize();
         }
 
         private void OnEnable()
@@ -50,7 +52,10 @@ namespace AIBridge.Runtime
             {
                 _server = new HttpServer(this, settings);
                 _server.Start();
-                _initialized = true;
+                lock (_commands)
+                {
+                    _initialized = true;
+                }
             }
             catch (Exception ex)
             {
@@ -60,20 +65,30 @@ namespace AIBridge.Runtime
 
         private void OnDisable()
         {
-            _initialized = false;
+            lock (_commands)
+            {
+                _initialized = false;
+                var activeCommands = new List<PendingCommand>(_activeCommands);
+                for (var i = 0; i < activeCommands.Count; i++)
+                {
+                    var active = activeCommands[i];
+                    active.Complete(active.CreateFailure("bridge_stopped", "Runtime Bridge stopped."));
+                }
+
+                while (_commands.Count > 0)
+                {
+                    var pending = _commands.Dequeue();
+                    pending.Complete(pending.CreateFailure("bridge_stopped", "Runtime Bridge stopped."));
+                }
+            }
+
             if (_server != null)
             {
                 _server.Dispose();
                 _server = null;
             }
 
-            lock (_commands)
-            {
-                while (_commands.Count > 0)
-                {
-                    _commands.Dequeue().Complete(Failure(null, "bridge_stopped", "Runtime Bridge stopped."));
-                }
-            }
+            AIBridgeRuntimeLogCommands.StopAndReset();
         }
 
         private void Update()
@@ -89,6 +104,10 @@ namespace AIBridge.Runtime
                 if (_commands.Count > 0)
                 {
                     command = _commands.Dequeue();
+                    if (!command.IsClosed)
+                    {
+                        _activeCommands.Add(command);
+                    }
                 }
             }
 
@@ -103,32 +122,70 @@ namespace AIBridge.Runtime
             pending = null;
             error = null;
 
-            if (!_initialized)
-            {
-                error = "Runtime Bridge is not ready.";
-                return false;
-            }
-
-            if (settings == null || !settings.enableRuntimeCodeExecution)
-            {
-                error = "Runtime code execution is disabled.";
-                return false;
-            }
-
-            if (Interlocked.Increment(ref _pendingCommandCount) > MaxPendingCommands)
-            {
-                Interlocked.Decrement(ref _pendingCommandCount);
-                error = "Runtime command queue is full.";
-                return false;
-            }
-
-            pending = new PendingCommand(request, () => Interlocked.Decrement(ref _pendingCommandCount));
             lock (_commands)
             {
-                _commands.Enqueue(pending);
-            }
+                if (!_initialized)
+                {
+                    error = "Runtime Bridge is not ready.";
+                    return false;
+                }
 
-            return true;
+                if (settings == null || !settings.enableRuntimeCodeExecution)
+                {
+                    error = "Runtime code execution is disabled.";
+                    return false;
+                }
+
+                if (_pendingCommandCount >= MaxPendingCommands)
+                {
+                    error = "Runtime command queue is full.";
+                    return false;
+                }
+
+                PendingCommand created = null;
+                created = new PendingCommand(request, () => HandlePendingClosed(created));
+                pending = created;
+                _pendingCommandCount++;
+                _commands.Enqueue(pending);
+                return true;
+            }
+        }
+
+        internal bool Enqueue(AIBridgeSelfCommandExecuteRequest request, out PendingCommand pending, out string error)
+        {
+            pending = null;
+            error = null;
+
+            lock (_commands)
+            {
+                if (!_initialized)
+                {
+                    error = "Runtime Bridge is not ready.";
+                    return false;
+                }
+
+                if (_pendingCommandCount >= MaxPendingCommands)
+                {
+                    error = "Runtime command queue is full.";
+                    return false;
+                }
+
+                PendingCommand created = null;
+                created = new PendingCommand(request, () => HandlePendingClosed(created));
+                pending = created;
+                _pendingCommandCount++;
+                _commands.Enqueue(pending);
+                return true;
+            }
+        }
+
+        private void HandlePendingClosed(PendingCommand pending)
+        {
+            lock (_commands)
+            {
+                _pendingCommandCount--;
+                _activeCommands.Remove(pending);
+            }
         }
 
         private bool IsEnabledForBuild()
@@ -146,6 +203,17 @@ namespace AIBridge.Runtime
         }
 
         private void ExecuteOnMainThread(PendingCommand pending)
+        {
+            if (pending.IsRuntimeCommand)
+            {
+                ExecuteRuntimeCommand(pending);
+                return;
+            }
+
+            ExecuteCodeOnMainThread(pending);
+        }
+
+        private void ExecuteCodeOnMainThread(PendingCommand pending)
         {
             var request = pending.Request;
             AIBridgeSelfRuntimeResult validationFailure;
@@ -205,9 +273,80 @@ namespace AIBridge.Runtime
             }
         }
 
+        private void ExecuteRuntimeCommand(PendingCommand pending)
+        {
+            var request = pending.CommandRequest;
+            if (request == null)
+            {
+                pending.Complete(CommandFailure(null, "invalid_request", "Request body is required."));
+                return;
+            }
+
+            if (!string.Equals(request.action, AIBridgeRuntimeProtocol.CommandExecuteAction, StringComparison.Ordinal))
+            {
+                pending.Complete(CommandFailure(request, "invalid_action", "Unsupported Runtime action."));
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(request.type))
+            {
+                pending.Complete(CommandFailure(request, "missing_parameter", "Runtime command type is required."));
+                return;
+            }
+
+            AIBridgeRuntimeCommandDelegate command;
+            if (!AIBridgeRuntimeCommandRegistry.TryGet(request.type, out command))
+            {
+                pending.Complete(CommandFailure(
+                    request,
+                    "unknown_command",
+                    "Unknown Runtime command: " + request.type));
+                return;
+            }
+
+            var context = new AIBridgeRuntimeCommandContext(request, () => pending.IsClosed);
+            IEnumerator routine;
+            try
+            {
+                routine = command(context);
+            }
+            catch (AIBridgeRuntimeBindingException ex)
+            {
+                pending.Complete(CommandFailure(request, "binding_failed", ex.Message));
+                return;
+            }
+            catch (Exception ex)
+            {
+                pending.Complete(CommandFailure(
+                    request,
+                    "execution_failed",
+                    ex.GetType().Name + ": " + ex.Message));
+                return;
+            }
+
+            StartCoroutine(AIBridgeRuntimeCoroutineExecutor.Execute(
+                routine,
+                context,
+                AIBridgeRuntimeProtocol.NormalizeTimeoutMs(request.timeoutMs),
+                outcome =>
+                {
+                    if (outcome.Success)
+                    {
+                        pending.Complete(CommandSuccess(request, NormalizeValue(outcome.Result, 0)));
+                    }
+                    else
+                    {
+                        pending.Complete(CommandFailure(
+                            request,
+                            string.IsNullOrEmpty(outcome.ErrorCode) ? "command_failed" : outcome.ErrorCode,
+                            outcome.ErrorMessage));
+                    }
+                }));
+        }
+
         private IEnumerator CompleteTask(PendingCommand pending, Task task)
         {
-            var timeoutMs = ClampTimeout(pending.Request == null
+            var timeoutMs = AIBridgeRuntimeProtocol.NormalizeTimeoutMs(pending.Request == null
                 ? AIBridgeRuntimeProtocol.DefaultExecutionTimeoutMs
                 : pending.Request.timeoutMs);
             var startedAt = Time.realtimeSinceStartup;
@@ -409,13 +548,32 @@ namespace AIBridge.Runtime
             };
         }
 
-        private static int ClampTimeout(int timeoutMs)
+        private static AIBridgeSelfRuntimeResult CommandSuccess(
+            AIBridgeSelfCommandExecuteRequest request,
+            object result)
         {
-            return Math.Max(
-                MinTimeoutMs,
-                Math.Min(
-                    MaxTimeoutMs,
-                    timeoutMs <= 0 ? AIBridgeRuntimeProtocol.DefaultExecutionTimeoutMs : timeoutMs));
+            return new AIBridgeSelfRuntimeResult
+            {
+                id = request == null ? null : request.id,
+                action = AIBridgeRuntimeProtocol.CommandExecuteAction,
+                success = true,
+                result = result
+            };
+        }
+
+        private static AIBridgeSelfRuntimeResult CommandFailure(
+            AIBridgeSelfCommandExecuteRequest request,
+            string errorCode,
+            string errorMessage)
+        {
+            return new AIBridgeSelfRuntimeResult
+            {
+                id = request == null ? null : request.id,
+                action = AIBridgeRuntimeProtocol.CommandExecuteAction,
+                success = false,
+                errorCode = errorCode,
+                errorMessage = errorMessage
+            };
         }
 
         internal sealed class PendingCommand
@@ -430,13 +588,22 @@ namespace AIBridge.Runtime
                 _onClosed = onClosed;
             }
 
+            public PendingCommand(AIBridgeSelfCommandExecuteRequest request, Action onClosed)
+            {
+                CommandRequest = request;
+                IsRuntimeCommand = true;
+                _onClosed = onClosed;
+            }
+
             public AIBridgeSelfCodeExecuteRequest Request { get; private set; }
+            public AIBridgeSelfCommandExecuteRequest CommandRequest { get; private set; }
+            public bool IsRuntimeCommand { get; private set; }
             public AIBridgeSelfRuntimeResult Result { get; private set; }
             public bool IsClosed { get { return Volatile.Read(ref _closed) != 0; } }
 
             public bool Wait(int timeoutMs)
             {
-                return _completed.Wait(ClampTimeout(timeoutMs));
+                return _completed.Wait(AIBridgeRuntimeProtocol.NormalizeTimeoutMs(timeoutMs));
             }
 
             public void Complete(AIBridgeSelfRuntimeResult result)
@@ -453,11 +620,19 @@ namespace AIBridge.Runtime
                     _onClosed();
                 }
             }
+
+            public AIBridgeSelfRuntimeResult CreateFailure(string errorCode, string errorMessage)
+            {
+                return IsRuntimeCommand
+                    ? CommandFailure(CommandRequest, errorCode, errorMessage)
+                    : Failure(Request, errorCode, errorMessage);
+            }
         }
 
         private sealed class HttpServer : IDisposable
         {
             private const int MaxHeaderBytes = 64 * 1024;
+            private const int ArtifactSendTimeoutMs = 120000;
             private readonly AIBridgeRuntimeBridge _bridge;
             private readonly AIBridgeRuntimeSettings _settings;
             private TcpListener _listener;
@@ -558,43 +733,45 @@ namespace AIBridge.Runtime
                             {
                                 service = "aibridge-self-runtime",
                                 ready = true,
-                                endpoint = AIBridgeRuntimeProtocol.CodeExecutePath
+                                endpoint = AIBridgeRuntimeProtocol.CodeExecutePath,
+                                commandEndpoint = AIBridgeRuntimeProtocol.CommandExecutePath,
+                                artifactEndpoint = AIBridgeRuntimeProtocol.ArtifactPathPrefix
                             }, _settings.maxResultBytes);
                             return;
                         }
 
+                        if (string.Equals(request.Method, "GET", StringComparison.OrdinalIgnoreCase)
+                            && request.Path.StartsWith(
+                                AIBridgeRuntimeProtocol.ArtifactPathPrefix,
+                                StringComparison.Ordinal))
+                        {
+                            HandleArtifact(client.GetStream(), request.Path);
+                            return;
+                        }
+
+                        var isCodeEndpoint = string.Equals(
+                            request.Path,
+                            AIBridgeRuntimeProtocol.CodeExecutePath,
+                            StringComparison.Ordinal);
+                        var isCommandEndpoint = string.Equals(
+                            request.Path,
+                            AIBridgeRuntimeProtocol.CommandExecutePath,
+                            StringComparison.Ordinal);
                         if (!string.Equals(request.Method, "POST", StringComparison.OrdinalIgnoreCase)
-                            || !string.Equals(request.Path, AIBridgeRuntimeProtocol.CodeExecutePath, StringComparison.Ordinal))
+                            || (!isCodeEndpoint && !isCommandEndpoint))
                         {
                             WriteJson(client.GetStream(), 404, Failure(null, "not_found", "Runtime endpoint not found."), _settings.maxResultBytes);
                             return;
                         }
 
-                        AIBridgeSelfCodeExecuteRequest command;
-                        try
+                        if (isCodeEndpoint)
                         {
-                            command = JsonConvert.DeserializeObject<AIBridgeSelfCodeExecuteRequest>(request.Body);
+                            HandleCodeExecute(client.GetStream(), request.Body);
                         }
-                        catch (Exception ex)
+                        else
                         {
-                            WriteJson(client.GetStream(), 400, Failure(null, "invalid_json", ex.Message), _settings.maxResultBytes);
-                            return;
+                            HandleCommandExecute(client.GetStream(), request.Body);
                         }
-
-                        PendingCommand pending;
-                        string error;
-                        if (!_bridge.Enqueue(command, out pending, out error))
-                        {
-                            WriteJson(client.GetStream(), 503, Failure(command, "bridge_unavailable", error), _settings.maxResultBytes);
-                            return;
-                        }
-
-                        if (!pending.Wait(command == null ? 0 : command.timeoutMs))
-                        {
-                            pending.Complete(Failure(command, "request_timeout", "Timed out waiting for Runtime execution."));
-                        }
-
-                        WriteJson(client.GetStream(), 200, pending.Result, _settings.maxResultBytes);
                     }
                     catch (Exception ex)
                     {
@@ -606,6 +783,155 @@ namespace AIBridge.Runtime
                         {
                         }
                     }
+                }
+            }
+
+            private void HandleCodeExecute(NetworkStream stream, string body)
+            {
+                AIBridgeSelfCodeExecuteRequest command;
+                try
+                {
+                    command = JsonConvert.DeserializeObject<AIBridgeSelfCodeExecuteRequest>(body);
+                }
+                catch (Exception ex)
+                {
+                    WriteJson(stream, 400, Failure(null, "invalid_json", ex.Message), _settings.maxResultBytes);
+                    return;
+                }
+
+                PendingCommand pending;
+                string error;
+                if (!_bridge.Enqueue(command, out pending, out error))
+                {
+                    WriteJson(stream, 503, Failure(command, "bridge_unavailable", error), _settings.maxResultBytes);
+                    return;
+                }
+
+                if (!pending.Wait(command == null ? 0 : command.timeoutMs))
+                {
+                    pending.Complete(Failure(command, "request_timeout", "Timed out waiting for Runtime execution."));
+                }
+
+                WriteJson(stream, 200, pending.Result, _settings.maxResultBytes);
+            }
+
+            private void HandleCommandExecute(NetworkStream stream, string body)
+            {
+                AIBridgeSelfCommandExecuteRequest command;
+                try
+                {
+                    command = JsonConvert.DeserializeObject<AIBridgeSelfCommandExecuteRequest>(body);
+                }
+                catch (Exception ex)
+                {
+                    WriteJson(stream, 400, CommandFailure(null, "invalid_json", ex.Message), _settings.maxResultBytes);
+                    return;
+                }
+
+                PendingCommand pending;
+                string error;
+                if (!_bridge.Enqueue(command, out pending, out error))
+                {
+                    WriteJson(
+                        stream,
+                        503,
+                        CommandFailure(command, "bridge_unavailable", error),
+                        _settings.maxResultBytes);
+                    return;
+                }
+
+                if (!pending.Wait(command == null ? 0 : command.timeoutMs))
+                {
+                    pending.Complete(CommandFailure(
+                        command,
+                        "request_timeout",
+                        "Timed out waiting for Runtime command execution."));
+                }
+
+                WriteJson(stream, 200, pending.Result, _settings.maxResultBytes);
+            }
+
+            private static void HandleArtifact(NetworkStream stream, string requestPath)
+            {
+                stream.WriteTimeout = ArtifactSendTimeoutMs;
+                var encodedFilename = requestPath.Substring(AIBridgeRuntimeProtocol.ArtifactPathPrefix.Length);
+                string filename;
+                try
+                {
+                    filename = Uri.UnescapeDataString(encodedFilename);
+                }
+                catch (UriFormatException)
+                {
+                    WriteJson(stream, 400, Failure(null, "invalid_artifact_path", "Artifact path is invalid."),
+                        AIBridgeRuntimeProtocol.MaxResultBytes);
+                    return;
+                }
+
+                var extension = Path.GetExtension(filename);
+                if (string.IsNullOrEmpty(filename)
+                    || !string.Equals(filename, Path.GetFileName(filename), StringComparison.Ordinal)
+                    || filename.IndexOf('/') >= 0
+                    || filename.IndexOf('\\') >= 0
+                    || (!string.Equals(extension, ".png", StringComparison.OrdinalIgnoreCase)
+                        && !string.Equals(extension, ".gif", StringComparison.OrdinalIgnoreCase)))
+                {
+                    WriteJson(stream, 404, Failure(null, "artifact_not_found", "Artifact not found."),
+                        AIBridgeRuntimeProtocol.MaxResultBytes);
+                    return;
+                }
+
+                var path = Path.Combine(AIBridgeRuntimeScreenshotCommands.GetScreenshotDirectory(), filename);
+                FileInfo file;
+                try
+                {
+                    file = new FileInfo(path);
+                    if (!file.Exists)
+                    {
+                        WriteJson(stream, 404, Failure(null, "artifact_not_found", "Artifact not found."),
+                            AIBridgeRuntimeProtocol.MaxResultBytes);
+                        return;
+                    }
+
+                    if (file.Length < 0 || file.Length > AIBridgeRuntimeProtocol.MaxArtifactBytes)
+                    {
+                        WriteJson(stream, 413, Failure(null, "artifact_too_large", "Artifact exceeds the size limit."),
+                            AIBridgeRuntimeProtocol.MaxResultBytes);
+                        return;
+                    }
+                }
+                catch (IOException)
+                {
+                    WriteJson(stream, 404, Failure(null, "artifact_not_found", "Artifact not found."),
+                        AIBridgeRuntimeProtocol.MaxResultBytes);
+                    return;
+                }
+
+                var contentType = string.Equals(extension, ".png", StringComparison.OrdinalIgnoreCase)
+                    ? "image/png"
+                    : "image/gif";
+                using (var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+                {
+                    var headers = Encoding.ASCII.GetBytes(
+                        "HTTP/1.1 200 OK\r\n"
+                        + "Content-Type: " + contentType + "\r\n"
+                        + "Content-Length: " + fileStream.Length + "\r\n"
+                        + "Connection: close\r\n\r\n");
+                    stream.Write(headers, 0, headers.Length);
+                    var buffer = new byte[64 * 1024];
+                    long remaining = fileStream.Length;
+                    while (remaining > 0)
+                    {
+                        var read = fileStream.Read(buffer, 0, (int)Math.Min(buffer.Length, remaining));
+                        if (read <= 0)
+                        {
+                            throw new EndOfStreamException("Unexpected end of artifact file.");
+                        }
+
+                        stream.Write(buffer, 0, read);
+                        remaining -= read;
+                    }
+
+                    stream.Flush();
                 }
             }
 
@@ -717,8 +1043,16 @@ namespace AIBridge.Runtime
                 var body = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(value));
                 if (body.Length > Math.Max(1024, maxResultBytes))
                 {
+                    var runtimeResult = value as AIBridgeSelfRuntimeResult;
+                    var tooLargeFailure = runtimeResult != null
+                        && string.Equals(
+                            runtimeResult.action,
+                            AIBridgeRuntimeProtocol.CommandExecuteAction,
+                            StringComparison.Ordinal)
+                        ? CommandFailure(null, "result_too_large", "Runtime result exceeds the configured size limit.")
+                        : Failure(null, "result_too_large", "Runtime result exceeds the configured size limit.");
                     body = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(
-                        Failure(null, "result_too_large", "Runtime result exceeds the configured size limit.")));
+                        tooLargeFailure));
                     statusCode = 500;
                 }
 

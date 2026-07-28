@@ -49,14 +49,14 @@ namespace AIBridge.Runtime
             gameObject.hideFlags = HideFlags.HideInHierarchy;
             gameObject.SetActive(false);
 
-            var bridge = gameObject.AddComponent<AIBridgeSelfRuntimeBridge>();
-            bridge.settings = injectedSettings ?? new AIBridgeSelfRuntimeSettings();
+            var bridge = gameObject.AddComponent<AIBridgeRuntimeBridge>();
+            bridge.settings = injectedSettings ?? new AIBridgeRuntimeSettings();
             gameObject.SetActive(true);
         }
 
-        private static AIBridgeSelfRuntimeSettings TakeInjectedSettings()
+        private static AIBridgeRuntimeSettings TakeInjectedSettings()
         {
-            AIBridgeSelfRuntimeSettings result = null;
+            AIBridgeRuntimeSettings result = null;
             var carriers = Resources.FindObjectsOfTypeAll<AIBridgeSelfRuntimeSettingsCarrier>();
             for (var i = 0; i < carriers.Length; i++)
             {
@@ -79,9 +79,9 @@ namespace AIBridge.Runtime
             return result;
         }
 
-        private static AIBridgeSelfRuntimeBridge FindExistingBridge()
+        private static AIBridgeRuntimeBridge FindExistingBridge()
         {
-            var bridges = Resources.FindObjectsOfTypeAll<AIBridgeSelfRuntimeBridge>();
+            var bridges = Resources.FindObjectsOfTypeAll<AIBridgeRuntimeBridge>();
             for (var i = 0; i < bridges.Length; i++)
             {
                 var bridge = bridges[i];

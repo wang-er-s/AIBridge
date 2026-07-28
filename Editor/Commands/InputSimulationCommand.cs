@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
+using AIBridge.Runtime;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -15,7 +16,10 @@ namespace AIBridge.Editor
         [AIBridge("通过路径模拟点击 GameObject (Only Runtime)",
             "AIBridgeCLI InputSimulationCommand_Click --path \"Canvas/Button\"")]
         public static IEnumerator Click(
-            [Description("GameObject 的层级路径")] string path)
+            [Description("GameObject 的层级路径")] string path,
+            [Description("手机 Runtime URL；为空时在 Editor 执行")] string url = null,
+            [Description("手机 Runtime 执行超时，单位毫秒")]
+            int runtimeTimeout = AIBridgeRuntimeProtocol.DefaultExecutionTimeoutMs)
         {
             if (!CanUse(out var result))
             {
@@ -39,7 +43,10 @@ namespace AIBridge.Editor
         [AIBridge("通过实例 ID 模拟点击 GameObject (Only Runtime)",
             "AIBridgeCLI InputSimulationCommand_ClickByInstanceId --instanceId 12345")]
         public static IEnumerator ClickByInstanceId(
-            [Description("GameObject 的实例 ID")] int instanceId)
+            [Description("GameObject 的实例 ID")] int instanceId,
+            [Description("手机 Runtime URL；为空时在 Editor 执行")] string url = null,
+            [Description("手机 Runtime 执行超时，单位毫秒")]
+            int runtimeTimeout = AIBridgeRuntimeProtocol.DefaultExecutionTimeoutMs)
         {
             if (!CanUse(out var result))
             {
@@ -84,7 +91,10 @@ namespace AIBridge.Editor
             "AIBridgeCLI InputSimulationCommand_ClickAt --x 100 --y 200")]
         public static IEnumerator ClickAt(
             [Description("屏幕 X 坐标")] float x,
-            [Description("屏幕 Y 坐标")] float y)
+            [Description("屏幕 Y 坐标")] float y,
+            [Description("手机 Runtime URL；为空时在 Editor 执行")] string url = null,
+            [Description("手机 Runtime 执行超时，单位毫秒")]
+            int runtimeTimeout = AIBridgeRuntimeProtocol.DefaultExecutionTimeoutMs)
         {
             if (!CanUse(out var result))
             {
@@ -123,7 +133,10 @@ namespace AIBridge.Editor
             float toX = -1,
             [Description("目标屏幕 Y 坐标（如果未提供 toPath）")]
             float toY = -1,
-            [Description("拖动动画的帧数")] int frames = 10)
+            [Description("拖动动画的帧数")] int frames = 10,
+            [Description("手机 Runtime URL；为空时在 Editor 执行")] string url = null,
+            [Description("手机 Runtime 执行超时，单位毫秒")]
+            int runtimeTimeout = AIBridgeRuntimeProtocol.DefaultExecutionTimeoutMs)
         {
             if (!CanUse(out var result))
             {
@@ -188,7 +201,10 @@ namespace AIBridge.Editor
             float toX = -1,
             [Description("目标屏幕 Y 坐标（如果未提供 toInstanceId）")]
             float toY = -1,
-            [Description("拖动动画的帧数")] int frames = 10)
+            [Description("拖动动画的帧数")] int frames = 10,
+            [Description("手机 Runtime URL；为空时在 Editor 执行")] string url = null,
+            [Description("手机 Runtime 执行超时，单位毫秒")]
+            int runtimeTimeout = AIBridgeRuntimeProtocol.DefaultExecutionTimeoutMs)
         {
             if (!CanUse(out var result))
             {
@@ -297,7 +313,10 @@ namespace AIBridge.Editor
             "AIBridgeCLI InputSimulationCommand_LongPress --path \"Canvas/Button\" --duration 1000")]
         public static IEnumerator LongPress(
             [Description("GameObject 的层级路径")] string path,
-            [Description("按压持续时间（毫秒）")] int duration = 1000)
+            [Description("按压持续时间（毫秒）")] int duration = 1000,
+            [Description("手机 Runtime URL；为空时在 Editor 执行")] string url = null,
+            [Description("手机 Runtime 执行超时，单位毫秒")]
+            int runtimeTimeout = AIBridgeRuntimeProtocol.DefaultExecutionTimeoutMs)
         {
             if (!CanUse(out var result))
             {
@@ -322,7 +341,10 @@ namespace AIBridge.Editor
             "AIBridgeCLI InputSimulationCommand_LongPressByInstanceId --instanceId 12345 --duration 1000")]
         public static IEnumerator LongPressByInstanceId(
             [Description("GameObject 的实例 ID")] int instanceId,
-            [Description("按压持续时间（毫秒）")] int duration = 1000)
+            [Description("按压持续时间（毫秒）")] int duration = 1000,
+            [Description("手机 Runtime URL；为空时在 Editor 执行")] string url = null,
+            [Description("手机 Runtime 执行超时，单位毫秒")]
+            int runtimeTimeout = AIBridgeRuntimeProtocol.DefaultExecutionTimeoutMs)
         {
             if (!CanUse(out var result))
             {

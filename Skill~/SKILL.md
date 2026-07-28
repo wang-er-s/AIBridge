@@ -112,18 +112,9 @@ Compile没有Help，直接使用即可
 
 -- **Compile** - 编译代码，并返回编译结果，如果有报错是会直接返回，不需要再查看Log
 
-### AssetDatabase
-
-- **AssetDatabaseCommand_Find** - 通过 AssetDatabase 过滤器查找资源
-- **AssetDatabaseCommand_Refresh** - 刷新资源数据库
-
-### Batch
-
-- **Batch** - 批量执行多个命令，按顺序执行并返回每个命令的结果。用于需要执行多个相关操作的场景
-
 ### CodeExecute
 
-- **CodeExecuteCommand_Execute** - 执行C#代码片段或脚本文件，支持编辑器或运行时。如果脚本内容过多更建议写入文件来运行，脚本文件放到AIBridgeCache/code中
+- **CodeExecuteCommand_Execute** - 执行C#代码片段或脚本文件。不传 url 时在 Editor 执行，传入手机 Runtime URL 时编译并下发到 Player 执行。
 
 ### Editor
 
@@ -133,23 +124,11 @@ Compile没有Help，直接使用即可
 - **EditorCommand_Play** - 进入播放模式
 - **EditorCommand_Stop** - 退出播放模式
 
-### GameObject
-
-- **GameObjectCommand_Create** - 在场景中创建新的 GameObject
-- **GameObjectCommand_Destroy** - 销毁 GameObject
-- **GameObjectCommand_Find** - 在场景中查找GameObject
-- **GameObjectCommand_GetInfo** - 获取 GameObject 的详细信息
-- **GameObjectCommand_SetActive** - 设置 GameObject 的激活或非激活状态
-
 ### GetLogs
 
 - **GetLogsCommand_StartCapture** - 开始捕获日志到缓冲区（精准模式），捕获的日志带毫秒级时间戳
 - **GetLogsCommand_StopCapture** - 停止捕获日志，返回捕获的日志总数
 - **Log** - 从 Unity 编辑器获取控制台日志
-
-### Help
-
-- **Help** - 获取特定命令的详细信息
 
 ### InputSimulation
 
@@ -161,52 +140,10 @@ Compile没有Help，直接使用即可
 - **InputSimulationCommand_LongPress** - 通过路径模拟长按 GameObject (Only Runtime)
 - **InputSimulationCommand_LongPressByInstanceId** - 通过实例 ID 模拟长按 GameObject (Only Runtime)
 
-### Inspector
-
-- **InspectorCommand_AddComponent** - 向 GameObject 添加组件
-- **InspectorCommand_GetComponents** - 获取 GameObject 上的所有组件
-- **InspectorCommand_GetProperties** - 获取组件的序列化属性
-- **InspectorCommand_RemoveComponent** - 从 GameObject 移除组件
-- **InspectorCommand_SetProperty** - 设置组件上的序列化属性
-
-### MenuItem
-
-- **MenuItemCommand_Execute** - 通过路径执行 Unity 编辑器菜单项
-
-### Prefab
-
-- **PrefabCommand_Apply** - 将预制体实例的覆盖应用回预制体资源
-- **PrefabCommand_GetInfo** - 获取资源或实例的预制体信息
-- **PrefabCommand_Instantiate** - 在场景中实例化预制体
-- **PrefabCommand_Save** - 将 GameObject 保存为预制体资源
-- **PrefabCommand_Unpack** - 解包预制体实例
-
-### Scene
-
-- **SceneCommand_GetActive** - 获取当前激活场景的信息
-- **SceneCommand_GetHierarchy** - 获取场景层级结构树
-- **SceneCommand_Load** - 在编辑器中加载场景
-
 ### Screenshot
 
 - **ScreenshotCommand_Gif** - 捕获多个截图并合成 GIF，至少需要 15 秒超时
 - **ScreenshotCommand_Image** - 捕获 Game 视图的截图
-
-### Selection
-
-- **SelectionCommand_Clear** - 清除当前选择
-- **SelectionCommand_Get** - 获取当前选择的GameObject
-- **SelectionCommand_Set** - 设置当前选择的Object，可以同时传递多个参数
-
-### Transform
-
-- **TransformCommand_Get** - 获取 GameObject 的 Transform 数据
-- **TransformCommand_LookAt** - 使 GameObject 朝向目标位置
-- **TransformCommand_Reset** - 重置 Transform 为默认值
-- **TransformCommand_SetParent** - 设置 GameObject 的父级
-- **TransformCommand_SetPosition** - 设置 GameObject 的位置
-- **TransformCommand_SetRotation** - Set rotation of a GameObject (Euler angles)
-- **TransformCommand_SetScale** - 设置 GameObject 的缩放
 
 <!-- AUTO-GENERATED-COMMANDS-END -->
 

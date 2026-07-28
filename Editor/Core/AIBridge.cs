@@ -1,5 +1,7 @@
+using System;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using UnityEditor;
 using UnityEngine;
 
@@ -26,6 +28,7 @@ namespace AIBridge.Editor
         private static double _lastPollTime;
         private static CommandWatcher _watcher;
         private static bool _enabled = true;
+        private static readonly string SourceFilePath = GetSourceFilePath();
 
         /// <summary>
         /// Communication directory path
@@ -94,26 +97,67 @@ namespace AIBridge.Editor
         /// </summary>
         private static string FindPackageRoot()
         {
-            // Try local package first: Packages/AIBridge
-            var localPath = Path.Combine(ProjectRoot, "Packages", "AIBridge");
-            if (Directory.Exists(localPath))
+            try
             {
-                return localPath;
+                var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(AIBridge).Assembly);
+                if (packageInfo != null && IsPackageRoot(packageInfo.resolvedPath))
+                {
+                    return Path.GetFullPath(packageInfo.resolvedPath);
+                }
+            }
+            catch (Exception ex)
+            {
+                AIBridgeLogger.LogWarning("Failed to resolve AIBridge through Package Manager: " + ex.Message);
             }
 
-            // Try PackageCache: Library/PackageCache/cn.lys.aibridge@*
+            var sourceRoot = Path.GetFullPath(Path.Combine(
+                Path.GetDirectoryName(SourceFilePath) ?? string.Empty,
+                "..",
+                ".."));
+            if (IsPackageRoot(sourceRoot))
+            {
+                return sourceRoot;
+            }
+
+            var packagePath = Path.Combine(ProjectRoot, "Packages", "cn.lys.aibridge");
+            if (IsPackageRoot(packagePath))
+            {
+                return Path.GetFullPath(packagePath);
+            }
+
+            var legacyPackagePath = Path.Combine(ProjectRoot, "Packages", "AIBridge");
+            if (IsPackageRoot(legacyPackagePath))
+            {
+                return Path.GetFullPath(legacyPackagePath);
+            }
+
             var packageCachePath = Path.Combine(ProjectRoot, "Library", "PackageCache");
             if (Directory.Exists(packageCachePath))
             {
                 var dirs = Directory.GetDirectories(packageCachePath, "cn.lys.aibridge@*");
-                if (dirs.Length > 0)
+                for (var i = 0; i < dirs.Length; i++)
                 {
-                    return dirs[0];
+                    if (IsPackageRoot(dirs[i]))
+                    {
+                        return Path.GetFullPath(dirs[i]);
+                    }
                 }
             }
 
             AIBridgeLogger.LogWarning("AIBridge package root not found, using fallback path");
-            return localPath; // Fallback
+            return Path.GetFullPath(packagePath);
+        }
+
+        private static bool IsPackageRoot(string path)
+        {
+            return !string.IsNullOrEmpty(path)
+                && Directory.Exists(path)
+                && File.Exists(Path.Combine(path, "package.json"));
+        }
+
+        private static string GetSourceFilePath([CallerFilePath] string path = "")
+        {
+            return path;
         }
 
         /// <summary>

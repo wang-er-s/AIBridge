@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
+using AIBridge.Runtime;
 using UnityEditor;
 using UnityEngine;
 
@@ -12,7 +13,10 @@ namespace AIBridge.Editor
     {
         [AIBridge("捕获 Game 视图的截图",
             "AIBridgeCLI ScreenshotCommand_Image")]
-        public static IEnumerator Image()
+        public static IEnumerator Image(
+            [Description("手机 Runtime URL；为空时在 Editor 执行")] string url = null,
+            [Description("手机 Runtime 执行超时，单位毫秒")]
+            int runtimeTimeout = AIBridgeRuntimeProtocol.DefaultExecutionTimeoutMs)
         {
             ScreenshotResult result = null;
             yield return ScreenshotHelper.CaptureGameView(r => { result = r; });
@@ -43,7 +47,10 @@ namespace AIBridge.Editor
             float scale = 0.5f,
             [Description("颜色数量（64-256）")] int colorCount = 128,
             [Description("GIF 播放的 FPS（10-30）")]
-            int fps = 15)
+            int fps = 15,
+            [Description("手机 Runtime URL；为空时在 Editor 执行")] string url = null,
+            [Description("手机 Runtime 执行超时，单位毫秒")]
+            int runtimeTimeout = AIBridgeRuntimeProtocol.DefaultExecutionTimeoutMs)
         {
             if (frameCount <= 0)
             {

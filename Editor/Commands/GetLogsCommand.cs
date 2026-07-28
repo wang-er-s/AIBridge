@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
+using AIBridge.Runtime;
 using UnityEngine;
 
 namespace AIBridge.Editor
@@ -30,7 +31,10 @@ AIBridgeCLI Log --filter ""NullReference"" --count 30",
         public static IEnumerator Log(
             [Description("日志类型过滤器：All, Error, Warning, Log")] string logType = "All",
             [Description("文本过滤器（子字符串匹配）")] string filter = null,
-            [Description("返回的最大日志数量")] int count = 50)
+            [Description("返回的最大日志数量")] int count = 50,
+            [Description("手机 Runtime URL；为空时在 Editor 执行")] string url = null,
+            [Description("手机 Runtime 执行超时，单位毫秒")]
+            int runtimeTimeout = AIBridgeRuntimeProtocol.DefaultExecutionTimeoutMs)
         {
             if (_capturing)
             {
@@ -72,7 +76,10 @@ AIBridgeCLI Log --filter ""NullReference"" --count 30",
             @"用于精确监控某段时间的日志输出。开启后，使用 Log 命令获取的日志将带有精确时间戳。
 
 AIBridgeCLI GetLogsCommand_StartCapture")]
-        public static IEnumerator StartCapture()
+        public static IEnumerator StartCapture(
+            [Description("手机 Runtime URL；为空时在 Editor 执行")] string url = null,
+            [Description("手机 Runtime 执行超时，单位毫秒")]
+            int runtimeTimeout = AIBridgeRuntimeProtocol.DefaultExecutionTimeoutMs)
         {
             if (!_capturing)
             {
@@ -87,7 +94,10 @@ AIBridgeCLI GetLogsCommand_StartCapture")]
             @"停止精准模式的日志捕获。
 
 AIBridgeCLI GetLogsCommand_StopCapture")]
-        public static IEnumerator StopCapture()
+        public static IEnumerator StopCapture(
+            [Description("手机 Runtime URL；为空时在 Editor 执行")] string url = null,
+            [Description("手机 Runtime 执行超时，单位毫秒")]
+            int runtimeTimeout = AIBridgeRuntimeProtocol.DefaultExecutionTimeoutMs)
         {
             if (_capturing)
             {

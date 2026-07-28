@@ -1,5 +1,6 @@
 using System.Collections;
 using System.ComponentModel;
+using AIBridge.Runtime;
 using UnityEditor;
 using UnityEngine;
 
@@ -62,7 +63,10 @@ namespace AIBridge.Editor
             "AIBridgeCLI EditorCommand_Log --message \"Hello World\"")]
         public static IEnumerator Log(
             [Description("要记录的消息")] string message,
-            [Description("日志类型：Log, Warning, Error")] string logType = "Log")
+            [Description("日志类型：Log, Warning, Error")] string logType = "Log",
+            [Description("手机 Runtime URL；为空时在 Editor 执行")] string url = null,
+            [Description("手机 Runtime 执行超时，单位毫秒")]
+            int runtimeTimeout = AIBridgeRuntimeProtocol.DefaultExecutionTimeoutMs)
         {
             if (string.IsNullOrEmpty(message))
             {
