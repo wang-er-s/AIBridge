@@ -3,7 +3,7 @@ using UnityEngine.SceneManagement;
 
 namespace AIBridge.Runtime
 {
-    public static class AIBridgeRuntimeBootstrap
+    public static class AIBridgeBootstrap
     {
         private const string RuntimeObjectName = "AIBridgeSelf Runtime Bridge";
         private static bool _initialized;
@@ -49,15 +49,15 @@ namespace AIBridge.Runtime
             gameObject.hideFlags = HideFlags.HideInHierarchy;
             gameObject.SetActive(false);
 
-            var bridge = gameObject.AddComponent<AIBridgeRuntimeBridge>();
-            bridge.settings = injectedSettings ?? new AIBridgeRuntimeSettings();
+            var bridge = gameObject.AddComponent<AIBridgeBridge>();
+            bridge.settings = injectedSettings ?? new AIBridgeSettings();
             gameObject.SetActive(true);
         }
 
-        private static AIBridgeRuntimeSettings TakeInjectedSettings()
+        private static AIBridgeSettings TakeInjectedSettings()
         {
-            AIBridgeRuntimeSettings result = null;
-            var carriers = Resources.FindObjectsOfTypeAll<AIBridgeSelfRuntimeSettingsCarrier>();
+            AIBridgeSettings result = null;
+            var carriers = Resources.FindObjectsOfTypeAll<AIBridgeSelfSettingsCarrier>();
             for (var i = 0; i < carriers.Length; i++)
             {
                 var carrier = carriers[i];
@@ -79,9 +79,9 @@ namespace AIBridge.Runtime
             return result;
         }
 
-        private static AIBridgeRuntimeBridge FindExistingBridge()
+        private static AIBridgeBridge FindExistingBridge()
         {
-            var bridges = Resources.FindObjectsOfTypeAll<AIBridgeRuntimeBridge>();
+            var bridges = Resources.FindObjectsOfTypeAll<AIBridgeBridge>();
             for (var i = 0; i < bridges.Length; i++)
             {
                 var bridge = bridges[i];

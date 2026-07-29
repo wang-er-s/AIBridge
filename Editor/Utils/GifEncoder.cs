@@ -6,11 +6,11 @@ namespace AIBridge.Editor
 {
     public sealed class GifEncoder : IDisposable
     {
-        private readonly AIBridgeRuntimeGifEncoder _encoder;
+        private readonly AIBridgeGifEncoder _encoder;
 
         public GifEncoder(Stream stream, int width, int height, int fps = 20, int colorCount = 128)
         {
-            _encoder = new AIBridgeRuntimeGifEncoder(stream, width, height, fps, colorCount);
+            _encoder = new AIBridgeGifEncoder(stream, width, height, fps, colorCount);
         }
 
         public void Initialize(byte[] firstFramePixels)

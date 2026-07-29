@@ -47,14 +47,15 @@ public static class RequestBuilder
             return false;
         }
 
-        if (value.StartsWith("[") && value.EndsWith("]"))
+        if ((value.StartsWith("[") && value.EndsWith("]")) ||
+            (value.StartsWith("{") && value.EndsWith("}")))
         {
             try
             {
-                var array = JsonConvert.DeserializeObject<object[]>(value);
-                if (array != null)
+                var parsed = JsonConvert.DeserializeObject<object>(value);
+                if (parsed != null)
                 {
-                    return array;
+                    return parsed;
                 }
             }
             catch

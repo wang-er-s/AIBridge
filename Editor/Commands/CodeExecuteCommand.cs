@@ -34,7 +34,7 @@ public static class CodeExecutor
         [Description("要执行的文件，需要完整路径")] string file = null,
         [Description("手机 Runtime URL；为空时在 Editor 执行")] string url = null,
         [Description("手机 Runtime 执行超时，单位毫秒")]
-        int runtimeTimeout = AIBridgeRuntimeProtocol.DefaultExecutionTimeoutMs)
+        int runtimeTimeout = AIBridgeProtocol.DefaultExecutionTimeoutMs)
     {
         if (!string.IsNullOrEmpty(file))
         {

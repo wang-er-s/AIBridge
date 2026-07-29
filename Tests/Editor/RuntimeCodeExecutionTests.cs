@@ -36,26 +36,26 @@ namespace AIBridge.Editor.Tests
         [Test]
         public void RuntimeProtocol_UsesSelfSpecificEndpoints()
         {
-            Assert.That(AIBridgeRuntimeProtocol.HealthPath, Is.EqualTo("/aibridge-self/health"));
-            Assert.That(AIBridgeRuntimeProtocol.CodeExecutePath, Is.EqualTo("/aibridge-self/code/execute"));
-            Assert.That(AIBridgeRuntimeProtocol.CommandExecutePath, Is.EqualTo("/aibridge-self/command/execute"));
-            Assert.That(AIBridgeRuntimeProtocol.ArtifactPathPrefix, Is.EqualTo("/aibridge-self/artifacts/"));
-            Assert.That(AIBridgeRuntimeProtocol.CodeExecuteAction, Is.EqualTo("aibridge-self.code.execute"));
-            Assert.That(AIBridgeRuntimeProtocol.CommandExecuteAction, Is.EqualTo("aibridge-self.command.execute"));
+            Assert.That(AIBridgeProtocol.HealthPath, Is.EqualTo("/aibridge-self/health"));
+            Assert.That(AIBridgeProtocol.CodeExecutePath, Is.EqualTo("/aibridge-self/code/execute"));
+            Assert.That(AIBridgeProtocol.CommandExecutePath, Is.EqualTo("/aibridge-self/command/execute"));
+            Assert.That(AIBridgeProtocol.ArtifactPathPrefix, Is.EqualTo("/aibridge-self/artifacts/"));
+            Assert.That(AIBridgeProtocol.CodeExecuteAction, Is.EqualTo("aibridge-self.code.execute"));
+            Assert.That(AIBridgeProtocol.CommandExecuteAction, Is.EqualTo("aibridge-self.command.execute"));
         }
 
         [Test]
         public void RuntimeProtocol_NormalizesExecutionTimeout()
         {
             Assert.That(
-                AIBridgeRuntimeProtocol.NormalizeTimeoutMs(0),
-                Is.EqualTo(AIBridgeRuntimeProtocol.DefaultExecutionTimeoutMs));
+                AIBridgeProtocol.NormalizeTimeoutMs(0),
+                Is.EqualTo(AIBridgeProtocol.DefaultExecutionTimeoutMs));
             Assert.That(
-                AIBridgeRuntimeProtocol.NormalizeTimeoutMs(1),
-                Is.EqualTo(AIBridgeRuntimeProtocol.MinExecutionTimeoutMs));
+                AIBridgeProtocol.NormalizeTimeoutMs(1),
+                Is.EqualTo(AIBridgeProtocol.MinExecutionTimeoutMs));
             Assert.That(
-                AIBridgeRuntimeProtocol.NormalizeTimeoutMs(int.MaxValue),
-                Is.EqualTo(AIBridgeRuntimeProtocol.MaxExecutionTimeoutMs));
+                AIBridgeProtocol.NormalizeTimeoutMs(int.MaxValue),
+                Is.EqualTo(AIBridgeProtocol.MaxExecutionTimeoutMs));
         }
 
         [Test]
@@ -79,7 +79,7 @@ namespace AIBridge.Editor.Tests
             var request = new AIBridgeSelfCommandExecuteRequest
             {
                 id = "request-id",
-                action = AIBridgeRuntimeProtocol.CommandExecuteAction,
+                action = AIBridgeProtocol.CommandExecuteAction,
                 type = "EditorCommand_Log",
                 parameters = new Dictionary<string, object>
                 {
@@ -102,24 +102,20 @@ namespace AIBridge.Editor.Tests
         [TestCase("GetLogsCommand_StartCapture")]
         [TestCase("GetLogsCommand_StopCapture")]
         [TestCase("InputSimulationCommand_Click")]
-        [TestCase("InputSimulationCommand_ClickByInstanceId")]
-        [TestCase("InputSimulationCommand_ClickAt")]
         [TestCase("InputSimulationCommand_Drag")]
-        [TestCase("InputSimulationCommand_DragByInstanceId")]
         [TestCase("InputSimulationCommand_LongPress")]
-        [TestCase("InputSimulationCommand_LongPressByInstanceId")]
         [TestCase("ScreenshotCommand_Image")]
         [TestCase("ScreenshotCommand_Gif")]
         public void RuntimeCommandRegistry_MigratedCommandsAreRegistered(string command)
         {
-            Assert.That(AIBridgeRuntimeCommandRegistry.TryGet(command, out var handler), Is.True);
+            Assert.That(AIBridgeCommandRegistry.TryGet(command, out var handler), Is.True);
             Assert.That(handler, Is.Not.Null);
         }
 
         [Test]
         public void RuntimeCommandParameters_AreCaseInsensitiveAndConvertNumbers()
         {
-            var getter = new AIBridgeRuntimeParameterGetter(new Dictionary<string, object>
+            var getter = new AIBridgeParameterGetter(new Dictionary<string, object>
             {
                 { "COUNT", 25L },
                 { "Scale", 0.5d }
@@ -139,12 +135,8 @@ namespace AIBridge.Editor.Tests
                 typeof(GetLogsCommand).GetMethod(nameof(GetLogsCommand.StartCapture)),
                 typeof(GetLogsCommand).GetMethod(nameof(GetLogsCommand.StopCapture)),
                 typeof(InputSimulationCommand).GetMethod(nameof(InputSimulationCommand.Click)),
-                typeof(InputSimulationCommand).GetMethod(nameof(InputSimulationCommand.ClickByInstanceId)),
-                typeof(InputSimulationCommand).GetMethod(nameof(InputSimulationCommand.ClickAt)),
                 typeof(InputSimulationCommand).GetMethod(nameof(InputSimulationCommand.Drag)),
-                typeof(InputSimulationCommand).GetMethod(nameof(InputSimulationCommand.DragByInstanceId)),
                 typeof(InputSimulationCommand).GetMethod(nameof(InputSimulationCommand.LongPress)),
-                typeof(InputSimulationCommand).GetMethod(nameof(InputSimulationCommand.LongPressByInstanceId)),
                 typeof(ScreenshotCommand).GetMethod(nameof(ScreenshotCommand.Image)),
                 typeof(ScreenshotCommand).GetMethod(nameof(ScreenshotCommand.Gif))
             };
@@ -154,6 +146,134 @@ namespace AIBridge.Editor.Tests
                 Assert.That(method, Is.Not.Null);
                 Assert.That(method.GetParameters(), Has.Some.Property("Name").EqualTo("url"));
                 Assert.That(method.GetParameters(), Has.Some.Property("Name").EqualTo("runtimeTimeout"));
+            }
+        }
+
+        [Test]
+        public void DragPointParser_AcceptsMixedPathCoordinateAndInstanceIdPoints()
+        {
+            var rawPoints = new object[]
+            {
+                new Dictionary<string, object> { { "path", "Canvas/Item" } },
+                new Dictionary<string, object>
+                {
+                    { "path", "Canvas/Duplicate" },
+                    { "instanceId", -456L }
+                },
+                new Dictionary<string, object> { { "x", 480L }, { "y", 720L } },
+                new Dictionary<string, object> { { "instanceId", -123L } },
+                new Dictionary<string, object> { { "path", "Canvas/Slot" } }
+            };
+
+            var success = AIBridgeDragPointParser.TryParse(rawPoints, out var points, out var error);
+
+            Assert.That(success, Is.True, error);
+            Assert.That(points, Has.Count.EqualTo(5));
+            Assert.That(points[0].Path, Is.EqualTo("Canvas/Item"));
+            Assert.That(points[1].Path, Is.EqualTo("Canvas/Duplicate"));
+            Assert.That(points[1].InstanceId, Is.EqualTo(-456));
+            Assert.That(points[2].Position.Value, Is.EqualTo(new UnityEngine.Vector2(480, 720)));
+            Assert.That(points[3].InstanceId, Is.EqualTo(-123));
+            Assert.That(points[4].Path, Is.EqualTo("Canvas/Slot"));
+        }
+
+        [Test]
+        public void RuntimeInputResolver_DuplicatePathRequiresMatchingInstanceId()
+        {
+            var name = "AIBridgeDuplicate_" + Guid.NewGuid().ToString("N");
+            var first = new UnityEngine.GameObject(name);
+            var second = new UnityEngine.GameObject(name);
+
+            try
+            {
+                var resolver = new AIBridgePathInputTargetResolver();
+                var resolved = resolver.TryResolve(
+                    AIBridgeInputTarget.FromPath(name),
+                    out var gameObject,
+                    out var errorCode,
+                    out var errorMessage);
+
+                Assert.That(resolved, Is.False);
+                Assert.That(gameObject, Is.Null);
+                Assert.That(errorCode, Is.EqualTo("ambiguous_path"));
+                Assert.That(errorMessage, Does.Contain("Provide path + instanceId"));
+
+                resolved = resolver.TryResolve(
+                    AIBridgeInputTarget.FromPath(name, second.GetInstanceID()),
+                    out gameObject,
+                    out errorCode,
+                    out errorMessage);
+
+                Assert.That(resolved, Is.True, errorMessage);
+                Assert.That(gameObject, Is.SameAs(second));
+                Assert.That(errorCode, Is.Null);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(first);
+                UnityEngine.Object.DestroyImmediate(second);
+            }
+        }
+
+        [Test]
+        public void RuntimeInputResolver_InstanceIdAloneRequiresPath()
+        {
+            var resolved = new AIBridgePathInputTargetResolver().TryResolve(
+                AIBridgeInputTarget.FromInstanceId(123),
+                out var gameObject,
+                out var errorCode,
+                out var errorMessage);
+
+            Assert.That(resolved, Is.False);
+            Assert.That(gameObject, Is.Null);
+            Assert.That(errorCode, Is.EqualTo("path_required"));
+            Assert.That(errorMessage, Does.Contain("requires 'path'"));
+        }
+
+        [Test]
+        public void ScreenshotGifOptions_NormalizeSharedLimits()
+        {
+            var success = AIBridgeScreenshotGifOptions.TryNormalize(
+                500,
+                0.01f,
+                5f,
+                500,
+                100,
+                out var options,
+                out var error);
+
+            Assert.That(success, Is.True, error);
+            Assert.That(options.FrameCount, Is.EqualTo(200));
+            Assert.That(options.Delay, Is.EqualTo(0.1f));
+            Assert.That(options.Scale, Is.EqualTo(1f));
+            Assert.That(options.ColorCount, Is.EqualTo(256));
+            Assert.That(options.Fps, Is.EqualTo(30));
+        }
+
+        [Test]
+        public void LogService_InvalidTypeReturnsBindingFailure()
+        {
+            var result = AIBridgeLogService.Emit("message", "Verbose");
+
+            Assert.That(result.Success, Is.False);
+            Assert.That(result.ErrorCode, Is.EqualTo("binding_failed"));
+        }
+
+        [Test]
+        public void RuntimeCommandRegistry_RetiredInputCommandsAreNotRegistered()
+        {
+            var retiredCommands = new[]
+            {
+                "InputSimulationCommand_ClickByInstanceId",
+                "InputSimulationCommand_ClickAt",
+                "InputSimulationCommand_DragByInstanceId",
+                "InputSimulationCommand_LongPressByInstanceId"
+            };
+
+            foreach (var command in retiredCommands)
+            {
+                Assert.That(AIBridgeCommandRegistry.TryGet(command, out var handler), Is.False);
+                Assert.That(handler, Is.Null);
             }
         }
 

@@ -32,7 +32,7 @@ namespace AIBridge.Editor
 
         public static int HttpPort
         {
-            get { return EditorPrefs.GetInt(HttpPortKey, AIBridgeRuntimeProtocol.DefaultHttpPort); }
+            get { return EditorPrefs.GetInt(HttpPortKey, AIBridgeProtocol.DefaultHttpPort); }
             set { EditorPrefs.SetInt(HttpPortKey, Math.Max(1, Math.Min(65535, value))); }
         }
 

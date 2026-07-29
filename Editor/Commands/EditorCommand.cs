@@ -2,7 +2,6 @@ using System.Collections;
 using System.ComponentModel;
 using AIBridge.Runtime;
 using UnityEditor;
-using UnityEngine;
 
 namespace AIBridge.Editor
 {
@@ -66,20 +65,12 @@ namespace AIBridge.Editor
             [Description("日志类型：Log, Warning, Error")] string logType = "Log",
             [Description("手机 Runtime URL；为空时在 Editor 执行")] string url = null,
             [Description("手机 Runtime 执行超时，单位毫秒")]
-            int runtimeTimeout = AIBridgeRuntimeProtocol.DefaultExecutionTimeoutMs)
+            int runtimeTimeout = AIBridgeProtocol.DefaultExecutionTimeoutMs)
         {
-            if (string.IsNullOrEmpty(message))
-            {
-                yield return CommandResult.Failure("Parameter 'message' is required");
-                yield break;
-            }
-            switch (logType.ToLower())
-            {
-                case "warning": Debug.LogWarning($"[AIBridge] {message}"); break;
-                case "error": Debug.LogError($"[AIBridge] {message}"); break;
-                default: Debug.Log($"[AIBridge] {message}"); break;
-            }
-            yield return CommandResult.Success(new { action = "log", message, logType });
+            var result = AIBridgeLogService.Emit(message, logType);
+            yield return result.Success
+                ? CommandResult.Success(result.Data)
+                : CommandResult.Failure(result.ErrorMessage);
         }
     }
 }

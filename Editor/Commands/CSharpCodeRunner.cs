@@ -16,7 +16,7 @@ using Microsoft.CodeAnalysis.CSharp;
 public sealed class CSharpCodeRunner
 {
     private readonly List<MetadataReference> references;
-    private const string AsyncMethodName = AIBridgeRuntimeProtocol.AsyncEntryMethodName;
+    private const string AsyncMethodName = AIBridgeProtocol.AsyncEntryMethodName;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="CSharpCodeRunner"/> class.
@@ -95,7 +95,7 @@ public sealed class CSharpCodeRunner
         }
 
         code = Regex.Replace(code, "using.*?;", "");
-        var methodName = AIBridgeRuntimeProtocol.GetEntryMethodName(code);
+        var methodName = AIBridgeProtocol.GetEntryMethodName(code);
         var returnType = methodName == AsyncMethodName ? "async Task<object>" : "object";
         var methodBody = catchExceptions
             ? $@"try{{
@@ -112,7 +112,7 @@ public sealed class CSharpCodeRunner
 {sb}
 using System;
 using System.Threading.Tasks;
-public static class {AIBridgeRuntimeProtocol.EntryTypeName}
+public static class {AIBridgeProtocol.EntryTypeName}
 {{
     public static {returnType} {methodName}()
     {{
@@ -180,8 +180,8 @@ public static class {AIBridgeRuntimeProtocol.EntryTypeName}
         var result = this.CompileCode(wrappedCode, false);
         if (result.Success)
         {
-            result.EntryTypeName = AIBridgeRuntimeProtocol.EntryTypeName;
-            result.EntryMethodName = AIBridgeRuntimeProtocol.GetEntryMethodName(code);
+            result.EntryTypeName = AIBridgeProtocol.EntryTypeName;
+            result.EntryMethodName = AIBridgeProtocol.GetEntryMethodName(code);
         }
 
         return result;
@@ -198,7 +198,7 @@ public static class {AIBridgeRuntimeProtocol.EntryTypeName}
             };
         }
 
-        var type = assembly.GetType(AIBridgeRuntimeProtocol.EntryTypeName);
+        var type = assembly.GetType(AIBridgeProtocol.EntryTypeName);
         if (type == null)
         {
             return new EvaluationResult
@@ -208,7 +208,7 @@ public static class {AIBridgeRuntimeProtocol.EntryTypeName}
             };
         }
 
-        var method = type.GetMethod(AIBridgeRuntimeProtocol.EntryMethodName)
+        var method = type.GetMethod(AIBridgeProtocol.EntryMethodName)
             ?? type.GetMethod(AsyncMethodName);
         if (method == null)
         {

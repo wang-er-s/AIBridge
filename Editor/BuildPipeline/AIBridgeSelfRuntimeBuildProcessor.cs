@@ -54,13 +54,13 @@ namespace AIBridge.Editor
             var carrier = FindCarrier(scene);
             if (carrier == null)
             {
-                var gameObject = new GameObject(AIBridgeSelfRuntimeSettingsCarrier.ObjectName);
+                var gameObject = new GameObject(AIBridgeSelfSettingsCarrier.ObjectName);
                 gameObject.hideFlags = HideFlags.HideInHierarchy;
                 SceneManager.MoveGameObjectToScene(gameObject, scene);
-                carrier = gameObject.AddComponent<AIBridgeSelfRuntimeSettingsCarrier>();
+                carrier = gameObject.AddComponent<AIBridgeSelfSettingsCarrier>();
             }
 
-            carrier.settings = new AIBridgeRuntimeSettings
+            carrier.settings = new AIBridgeSettings
             {
                 enableRuntimeBridge = AIBridgeRuntimeEditorSettings.EnableRuntimeBridge,
                 enableRuntimeCodeExecution = AIBridgeRuntimeEditorSettings.EnableRuntimeCodeExecution
@@ -113,12 +113,12 @@ namespace AIBridge.Editor
             return developmentBuild || AIBridgeRuntimeEditorSettings.AllowReleaseBuild;
         }
 
-        private static AIBridgeSelfRuntimeSettingsCarrier FindCarrier(Scene scene)
+        private static AIBridgeSelfSettingsCarrier FindCarrier(Scene scene)
         {
             var roots = scene.GetRootGameObjects();
             for (var i = 0; i < roots.Length; i++)
             {
-                var carriers = roots[i].GetComponentsInChildren<AIBridgeSelfRuntimeSettingsCarrier>(true);
+                var carriers = roots[i].GetComponentsInChildren<AIBridgeSelfSettingsCarrier>(true);
                 if (carriers.Length > 0)
                 {
                     return carriers[0];

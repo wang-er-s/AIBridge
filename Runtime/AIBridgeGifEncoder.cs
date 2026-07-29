@@ -5,7 +5,7 @@ using UnityEngine;
 
 namespace AIBridge.Runtime
 {
-    public sealed class AIBridgeRuntimeGifEncoder : IDisposable
+    public sealed class AIBridgeGifEncoder : IDisposable
     {
         private readonly Stream _stream;
         private readonly int _width;
@@ -21,7 +21,7 @@ namespace AIBridge.Runtime
         private bool _finished;
         private bool _disposed;
 
-        public AIBridgeRuntimeGifEncoder(Stream stream, int width, int height, int fps, int colorCount)
+        public AIBridgeGifEncoder(Stream stream, int width, int height, int fps, int colorCount)
         {
             if (stream == null)
             {
@@ -45,7 +45,7 @@ namespace AIBridge.Runtime
         {
             if (_disposed)
             {
-                throw new ObjectDisposedException("AIBridgeRuntimeGifEncoder");
+                throw new ObjectDisposedException("AIBridgeGifEncoder");
             }
 
             if (pixels == null || pixels.Length != _width * _height * 4)
@@ -95,7 +95,7 @@ namespace AIBridge.Runtime
         {
             if (_disposed)
             {
-                throw new ObjectDisposedException("AIBridgeRuntimeGifEncoder");
+                throw new ObjectDisposedException("AIBridgeGifEncoder");
             }
 
             if (_headerWritten)

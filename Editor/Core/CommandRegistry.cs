@@ -114,12 +114,8 @@ namespace AIBridge.Editor
             Register(typeof(GetLogsCommand), nameof(GetLogsCommand.StopCapture));
 
             Register(typeof(InputSimulationCommand), nameof(InputSimulationCommand.Click));
-            Register(typeof(InputSimulationCommand), nameof(InputSimulationCommand.ClickByInstanceId));
-            Register(typeof(InputSimulationCommand), nameof(InputSimulationCommand.ClickAt));
             Register(typeof(InputSimulationCommand), nameof(InputSimulationCommand.Drag));
-            Register(typeof(InputSimulationCommand), nameof(InputSimulationCommand.DragByInstanceId));
             Register(typeof(InputSimulationCommand), nameof(InputSimulationCommand.LongPress));
-            Register(typeof(InputSimulationCommand), nameof(InputSimulationCommand.LongPressByInstanceId));
 
             Register(typeof(ScreenshotCommand), nameof(ScreenshotCommand.Image));
             Register(typeof(ScreenshotCommand), nameof(ScreenshotCommand.Gif));

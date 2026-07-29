@@ -4,20 +4,20 @@ using UnityEngine;
 namespace AIBridge.Runtime
 {
     [Serializable]
-    public sealed class AIBridgeRuntimeSettings
+    public sealed class AIBridgeSettings
     {
         public bool enableRuntimeBridge = true;
         public bool enableRuntimeCodeExecution = true;
         public bool allowInReleaseBuild;
         public string httpBindAddress = "0.0.0.0";
-        public int httpPort = AIBridgeRuntimeProtocol.DefaultHttpPort;
-        public int maxAssemblyBytes = AIBridgeRuntimeProtocol.MaxAssemblyBytes;
-        public int maxRequestBytes = AIBridgeRuntimeProtocol.MaxRequestBytes;
-        public int maxResultBytes = AIBridgeRuntimeProtocol.MaxResultBytes;
+        public int httpPort = AIBridgeProtocol.DefaultHttpPort;
+        public int maxAssemblyBytes = AIBridgeProtocol.MaxAssemblyBytes;
+        public int maxRequestBytes = AIBridgeProtocol.MaxRequestBytes;
+        public int maxResultBytes = AIBridgeProtocol.MaxResultBytes;
 
-        public AIBridgeRuntimeSettings Clone()
+        public AIBridgeSettings Clone()
         {
-            return new AIBridgeRuntimeSettings
+            return new AIBridgeSettings
             {
                 enableRuntimeBridge = enableRuntimeBridge,
                 enableRuntimeCodeExecution = enableRuntimeCodeExecution,
@@ -32,10 +32,10 @@ namespace AIBridge.Runtime
     }
 
     [AddComponentMenu("")]
-    public sealed class AIBridgeSelfRuntimeSettingsCarrier : MonoBehaviour
+    public sealed class AIBridgeSelfSettingsCarrier : MonoBehaviour
     {
         public const string ObjectName = "AIBridgeSelf Runtime Settings";
 
-        public AIBridgeRuntimeSettings settings = new AIBridgeRuntimeSettings();
+        public AIBridgeSettings settings = new AIBridgeSettings();
     }
 }

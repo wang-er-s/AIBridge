@@ -14,7 +14,7 @@ using UnityEngine;
 
 namespace AIBridge.Runtime
 {
-    public sealed class AIBridgeRuntimeBridge : MonoBehaviour
+    public sealed class AIBridgeBridge : MonoBehaviour
     {
         private const int MaxResultDepth = 8;
         private const int MaxCollectionItems = 512;
@@ -26,13 +26,13 @@ namespace AIBridge.Runtime
         private bool _initialized;
         private int _pendingCommandCount;
 
-        public AIBridgeRuntimeSettings settings = new AIBridgeRuntimeSettings();
+        public AIBridgeSettings settings = new AIBridgeSettings();
 
         private void Awake()
         {
             DontDestroyOnLoad(gameObject);
-            AIBridgeRuntimeCommandRegistry.EnsureBuiltInsRegistered();
-            AIBridgeRuntimeScreenshotCommands.Initialize();
+            AIBridgeCommandRegistry.EnsureBuiltInsRegistered();
+            AIBridgeScreenshotCommands.Initialize();
         }
 
         private void OnEnable()
@@ -88,7 +88,7 @@ namespace AIBridge.Runtime
                 _server = null;
             }
 
-            AIBridgeRuntimeLogCommands.StopAndReset();
+            AIBridgeLogCommands.StopAndReset();
         }
 
         private void Update()
@@ -216,7 +216,7 @@ namespace AIBridge.Runtime
         private void ExecuteCodeOnMainThread(PendingCommand pending)
         {
             var request = pending.Request;
-            AIBridgeSelfRuntimeResult validationFailure;
+            AIBridgeSelfResult validationFailure;
             byte[] assemblyBytes;
             if (!TryValidateRequest(request, out assemblyBytes, out validationFailure))
             {
@@ -282,7 +282,7 @@ namespace AIBridge.Runtime
                 return;
             }
 
-            if (!string.Equals(request.action, AIBridgeRuntimeProtocol.CommandExecuteAction, StringComparison.Ordinal))
+            if (!string.Equals(request.action, AIBridgeProtocol.CommandExecuteAction, StringComparison.Ordinal))
             {
                 pending.Complete(CommandFailure(request, "invalid_action", "Unsupported Runtime action."));
                 return;
@@ -294,8 +294,8 @@ namespace AIBridge.Runtime
                 return;
             }
 
-            AIBridgeRuntimeCommandDelegate command;
-            if (!AIBridgeRuntimeCommandRegistry.TryGet(request.type, out command))
+            AIBridgeCommandDelegate command;
+            if (!AIBridgeCommandRegistry.TryGet(request.type, out command))
             {
                 pending.Complete(CommandFailure(
                     request,
@@ -304,13 +304,13 @@ namespace AIBridge.Runtime
                 return;
             }
 
-            var context = new AIBridgeRuntimeCommandContext(request, () => pending.IsClosed);
+            var context = new AIBridgeCommandContext(request, () => pending.IsClosed);
             IEnumerator routine;
             try
             {
                 routine = command(context);
             }
-            catch (AIBridgeRuntimeBindingException ex)
+            catch (AIBridgeBindingException ex)
             {
                 pending.Complete(CommandFailure(request, "binding_failed", ex.Message));
                 return;
@@ -324,10 +324,10 @@ namespace AIBridge.Runtime
                 return;
             }
 
-            StartCoroutine(AIBridgeRuntimeCoroutineExecutor.Execute(
+            StartCoroutine(AIBridgeCoroutineExecutor.Execute(
                 routine,
                 context,
-                AIBridgeRuntimeProtocol.NormalizeTimeoutMs(request.timeoutMs),
+                AIBridgeProtocol.NormalizeTimeoutMs(request.timeoutMs),
                 outcome =>
                 {
                     if (outcome.Success)
@@ -346,8 +346,8 @@ namespace AIBridge.Runtime
 
         private IEnumerator CompleteTask(PendingCommand pending, Task task)
         {
-            var timeoutMs = AIBridgeRuntimeProtocol.NormalizeTimeoutMs(pending.Request == null
-                ? AIBridgeRuntimeProtocol.DefaultExecutionTimeoutMs
+            var timeoutMs = AIBridgeProtocol.NormalizeTimeoutMs(pending.Request == null
+                ? AIBridgeProtocol.DefaultExecutionTimeoutMs
                 : pending.Request.timeoutMs);
             var startedAt = Time.realtimeSinceStartup;
             while (!task.IsCompleted)
@@ -390,7 +390,7 @@ namespace AIBridge.Runtime
         private bool TryValidateRequest(
             AIBridgeSelfCodeExecuteRequest request,
             out byte[] assemblyBytes,
-            out AIBridgeSelfRuntimeResult failure)
+            out AIBridgeSelfResult failure)
         {
             assemblyBytes = null;
             failure = null;
@@ -400,7 +400,7 @@ namespace AIBridge.Runtime
                 return false;
             }
 
-            if (!string.Equals(request.action, AIBridgeRuntimeProtocol.CodeExecuteAction, StringComparison.Ordinal))
+            if (!string.Equals(request.action, AIBridgeProtocol.CodeExecuteAction, StringComparison.Ordinal))
             {
                 failure = Failure(request, "invalid_action", "Unsupported Runtime action.");
                 return false;
@@ -431,17 +431,17 @@ namespace AIBridge.Runtime
             }
 
             var maxAssemblyBytes = settings == null
-                ? AIBridgeRuntimeProtocol.MaxAssemblyBytes
+                ? AIBridgeProtocol.MaxAssemblyBytes
                 : Math.Max(1, settings.maxAssemblyBytes);
             if (assemblyBytes.Length == 0
                 || assemblyBytes.Length > maxAssemblyBytes
-                || assemblyBytes.Length > AIBridgeRuntimeProtocol.MaxAssemblyBytes)
+                || assemblyBytes.Length > AIBridgeProtocol.MaxAssemblyBytes)
             {
                 failure = Failure(request, "assembly_too_large", "Runtime assembly size is invalid.");
                 return false;
             }
 
-            var actualSha256 = AIBridgeRuntimeProtocol.ComputeSha256(assemblyBytes);
+            var actualSha256 = AIBridgeProtocol.ComputeSha256(assemblyBytes);
             if (string.IsNullOrWhiteSpace(request.sha256)
                 || !string.Equals(request.sha256, actualSha256, StringComparison.OrdinalIgnoreCase))
             {
@@ -522,54 +522,54 @@ namespace AIBridge.Runtime
             return value.ToString();
         }
 
-        private static AIBridgeSelfRuntimeResult Success(AIBridgeSelfCodeExecuteRequest request, object result)
+        private static AIBridgeSelfResult Success(AIBridgeSelfCodeExecuteRequest request, object result)
         {
-            return new AIBridgeSelfRuntimeResult
+            return new AIBridgeSelfResult
             {
                 id = request == null ? null : request.id,
-                action = AIBridgeRuntimeProtocol.CodeExecuteAction,
+                action = AIBridgeProtocol.CodeExecuteAction,
                 success = true,
                 result = result
             };
         }
 
-        private static AIBridgeSelfRuntimeResult Failure(
+        private static AIBridgeSelfResult Failure(
             AIBridgeSelfCodeExecuteRequest request,
             string errorCode,
             string errorMessage)
         {
-            return new AIBridgeSelfRuntimeResult
+            return new AIBridgeSelfResult
             {
                 id = request == null ? null : request.id,
-                action = AIBridgeRuntimeProtocol.CodeExecuteAction,
+                action = AIBridgeProtocol.CodeExecuteAction,
                 success = false,
                 errorCode = errorCode,
                 errorMessage = errorMessage
             };
         }
 
-        private static AIBridgeSelfRuntimeResult CommandSuccess(
+        private static AIBridgeSelfResult CommandSuccess(
             AIBridgeSelfCommandExecuteRequest request,
             object result)
         {
-            return new AIBridgeSelfRuntimeResult
+            return new AIBridgeSelfResult
             {
                 id = request == null ? null : request.id,
-                action = AIBridgeRuntimeProtocol.CommandExecuteAction,
+                action = AIBridgeProtocol.CommandExecuteAction,
                 success = true,
                 result = result
             };
         }
 
-        private static AIBridgeSelfRuntimeResult CommandFailure(
+        private static AIBridgeSelfResult CommandFailure(
             AIBridgeSelfCommandExecuteRequest request,
             string errorCode,
             string errorMessage)
         {
-            return new AIBridgeSelfRuntimeResult
+            return new AIBridgeSelfResult
             {
                 id = request == null ? null : request.id,
-                action = AIBridgeRuntimeProtocol.CommandExecuteAction,
+                action = AIBridgeProtocol.CommandExecuteAction,
                 success = false,
                 errorCode = errorCode,
                 errorMessage = errorMessage
@@ -598,15 +598,15 @@ namespace AIBridge.Runtime
             public AIBridgeSelfCodeExecuteRequest Request { get; private set; }
             public AIBridgeSelfCommandExecuteRequest CommandRequest { get; private set; }
             public bool IsRuntimeCommand { get; private set; }
-            public AIBridgeSelfRuntimeResult Result { get; private set; }
+            public AIBridgeSelfResult Result { get; private set; }
             public bool IsClosed { get { return Volatile.Read(ref _closed) != 0; } }
 
             public bool Wait(int timeoutMs)
             {
-                return _completed.Wait(AIBridgeRuntimeProtocol.NormalizeTimeoutMs(timeoutMs));
+                return _completed.Wait(AIBridgeProtocol.NormalizeTimeoutMs(timeoutMs));
             }
 
-            public void Complete(AIBridgeSelfRuntimeResult result)
+            public void Complete(AIBridgeSelfResult result)
             {
                 if (Interlocked.Exchange(ref _closed, 1) != 0)
                 {
@@ -621,7 +621,7 @@ namespace AIBridge.Runtime
                 }
             }
 
-            public AIBridgeSelfRuntimeResult CreateFailure(string errorCode, string errorMessage)
+            public AIBridgeSelfResult CreateFailure(string errorCode, string errorMessage)
             {
                 return IsRuntimeCommand
                     ? CommandFailure(CommandRequest, errorCode, errorMessage)
@@ -633,16 +633,16 @@ namespace AIBridge.Runtime
         {
             private const int MaxHeaderBytes = 64 * 1024;
             private const int ArtifactSendTimeoutMs = 120000;
-            private readonly AIBridgeRuntimeBridge _bridge;
-            private readonly AIBridgeRuntimeSettings _settings;
+            private readonly AIBridgeBridge _bridge;
+            private readonly AIBridgeSettings _settings;
             private TcpListener _listener;
             private Thread _thread;
             private volatile bool _running;
 
-            public HttpServer(AIBridgeRuntimeBridge bridge, AIBridgeRuntimeSettings settings)
+            public HttpServer(AIBridgeBridge bridge, AIBridgeSettings settings)
             {
                 _bridge = bridge;
-                _settings = settings ?? new AIBridgeRuntimeSettings();
+                _settings = settings ?? new AIBridgeSettings();
             }
 
             public void Start()
@@ -727,22 +727,22 @@ namespace AIBridge.Runtime
                         }
 
                         if (string.Equals(request.Method, "GET", StringComparison.OrdinalIgnoreCase)
-                            && string.Equals(request.Path, AIBridgeRuntimeProtocol.HealthPath, StringComparison.Ordinal))
+                            && string.Equals(request.Path, AIBridgeProtocol.HealthPath, StringComparison.Ordinal))
                         {
-                            WriteJson(client.GetStream(), 200, new AIBridgeSelfRuntimeHealth
+                            WriteJson(client.GetStream(), 200, new AIBridgeSelfHealth
                             {
                                 service = "aibridge-self-runtime",
                                 ready = true,
-                                endpoint = AIBridgeRuntimeProtocol.CodeExecutePath,
-                                commandEndpoint = AIBridgeRuntimeProtocol.CommandExecutePath,
-                                artifactEndpoint = AIBridgeRuntimeProtocol.ArtifactPathPrefix
+                                endpoint = AIBridgeProtocol.CodeExecutePath,
+                                commandEndpoint = AIBridgeProtocol.CommandExecutePath,
+                                artifactEndpoint = AIBridgeProtocol.ArtifactPathPrefix
                             }, _settings.maxResultBytes);
                             return;
                         }
 
                         if (string.Equals(request.Method, "GET", StringComparison.OrdinalIgnoreCase)
                             && request.Path.StartsWith(
-                                AIBridgeRuntimeProtocol.ArtifactPathPrefix,
+                                AIBridgeProtocol.ArtifactPathPrefix,
                                 StringComparison.Ordinal))
                         {
                             HandleArtifact(client.GetStream(), request.Path);
@@ -751,11 +751,11 @@ namespace AIBridge.Runtime
 
                         var isCodeEndpoint = string.Equals(
                             request.Path,
-                            AIBridgeRuntimeProtocol.CodeExecutePath,
+                            AIBridgeProtocol.CodeExecutePath,
                             StringComparison.Ordinal);
                         var isCommandEndpoint = string.Equals(
                             request.Path,
-                            AIBridgeRuntimeProtocol.CommandExecutePath,
+                            AIBridgeProtocol.CommandExecutePath,
                             StringComparison.Ordinal);
                         if (!string.Equals(request.Method, "POST", StringComparison.OrdinalIgnoreCase)
                             || (!isCodeEndpoint && !isCommandEndpoint))
@@ -854,7 +854,7 @@ namespace AIBridge.Runtime
             private static void HandleArtifact(NetworkStream stream, string requestPath)
             {
                 stream.WriteTimeout = ArtifactSendTimeoutMs;
-                var encodedFilename = requestPath.Substring(AIBridgeRuntimeProtocol.ArtifactPathPrefix.Length);
+                var encodedFilename = requestPath.Substring(AIBridgeProtocol.ArtifactPathPrefix.Length);
                 string filename;
                 try
                 {
@@ -863,7 +863,7 @@ namespace AIBridge.Runtime
                 catch (UriFormatException)
                 {
                     WriteJson(stream, 400, Failure(null, "invalid_artifact_path", "Artifact path is invalid."),
-                        AIBridgeRuntimeProtocol.MaxResultBytes);
+                        AIBridgeProtocol.MaxResultBytes);
                     return;
                 }
 
@@ -876,11 +876,11 @@ namespace AIBridge.Runtime
                         && !string.Equals(extension, ".gif", StringComparison.OrdinalIgnoreCase)))
                 {
                     WriteJson(stream, 404, Failure(null, "artifact_not_found", "Artifact not found."),
-                        AIBridgeRuntimeProtocol.MaxResultBytes);
+                        AIBridgeProtocol.MaxResultBytes);
                     return;
                 }
 
-                var path = Path.Combine(AIBridgeRuntimeScreenshotCommands.GetScreenshotDirectory(), filename);
+                var path = Path.Combine(AIBridgeScreenshotCommands.GetScreenshotDirectory(), filename);
                 FileInfo file;
                 try
                 {
@@ -888,21 +888,21 @@ namespace AIBridge.Runtime
                     if (!file.Exists)
                     {
                         WriteJson(stream, 404, Failure(null, "artifact_not_found", "Artifact not found."),
-                            AIBridgeRuntimeProtocol.MaxResultBytes);
+                            AIBridgeProtocol.MaxResultBytes);
                         return;
                     }
 
-                    if (file.Length < 0 || file.Length > AIBridgeRuntimeProtocol.MaxArtifactBytes)
+                    if (file.Length < 0 || file.Length > AIBridgeProtocol.MaxArtifactBytes)
                     {
                         WriteJson(stream, 413, Failure(null, "artifact_too_large", "Artifact exceeds the size limit."),
-                            AIBridgeRuntimeProtocol.MaxResultBytes);
+                            AIBridgeProtocol.MaxResultBytes);
                         return;
                     }
                 }
                 catch (IOException)
                 {
                     WriteJson(stream, 404, Failure(null, "artifact_not_found", "Artifact not found."),
-                        AIBridgeRuntimeProtocol.MaxResultBytes);
+                        AIBridgeProtocol.MaxResultBytes);
                     return;
                 }
 
@@ -1043,11 +1043,11 @@ namespace AIBridge.Runtime
                 var body = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(value));
                 if (body.Length > Math.Max(1024, maxResultBytes))
                 {
-                    var runtimeResult = value as AIBridgeSelfRuntimeResult;
+                    var runtimeResult = value as AIBridgeSelfResult;
                     var tooLargeFailure = runtimeResult != null
                         && string.Equals(
                             runtimeResult.action,
-                            AIBridgeRuntimeProtocol.CommandExecuteAction,
+                            AIBridgeProtocol.CommandExecuteAction,
                             StringComparison.Ordinal)
                         ? CommandFailure(null, "result_too_large", "Runtime result exceeds the configured size limit.")
                         : Failure(null, "result_too_large", "Runtime result exceeds the configured size limit.");

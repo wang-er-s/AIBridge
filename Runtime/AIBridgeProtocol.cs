@@ -8,7 +8,7 @@ namespace AIBridge.Runtime
     /// <summary>
     /// 手机 Player Runtime Bridge 的 HTTP 协议常量。
     /// </summary>
-    public static class AIBridgeRuntimeProtocol
+    public static class AIBridgeProtocol
     {
         public const string HealthPath = "/aibridge-self/health";
         public const string CodeExecutePath = "/aibridge-self/code/execute";
@@ -90,7 +90,7 @@ namespace AIBridge.Runtime
     /// Runtime Bridge 的统一响应。errorCode 非空表示执行失败。
     /// </summary>
     [Serializable]
-    public class AIBridgeSelfRuntimeResult
+    public class AIBridgeSelfResult
     {
         public string id;
         public string action;
@@ -104,7 +104,7 @@ namespace AIBridge.Runtime
     /// Health endpoint 返回的运行状态。
     /// </summary>
     [Serializable]
-    public class AIBridgeSelfRuntimeHealth
+    public class AIBridgeSelfHealth
     {
         public string service;
         public bool ready;

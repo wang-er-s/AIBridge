@@ -1,15 +1,15 @@
 using System;
 using System.Collections;
-using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using AIBridge.Runtime;
 using UnityEditor;
 using UnityEngine;
 
 namespace AIBridge.Editor
 {
     /// <summary>
-    /// Screenshot result data.
+    /// Screenshot result data retained for callers of CaptureGameView.
     /// </summary>
     public class ScreenshotResult
     {
@@ -23,28 +23,33 @@ namespace AIBridge.Editor
     }
 
     /// <summary>
-    /// Shared screenshot capture logic for CLI and hotkey.
-    /// Optimized with cached resources for GIF recording.
+    /// Editor adapters for the Runtime-owned screenshot pipeline.
     /// </summary>
     public static class ScreenshotHelper
     {
         private static string _screenshotsDir;
+        private static readonly EditorGameViewScreenshotBackend BackendInstance =
+            new EditorGameViewScreenshotBackend();
+        private static readonly EditorScreenshotStorage StorageInstance =
+            new EditorScreenshotStorage();
+        private static readonly EditorScreenshotProgress ProgressInstance =
+            new EditorScreenshotProgress();
 
-        // Cached resources for frame capture (reused across frames)
-        private static RenderTexture _cachedRenderTexture;
-        private static Texture2D _cachedTexture2D;
-        private static int _cachedWidth;
-        private static int _cachedHeight;
-        private static byte[] _cachedFlipBuffer;
+        public static IAIBridgeScreenshotBackend Backend
+        {
+            get { return BackendInstance; }
+        }
 
-        // Cached GameView size (avoid reflection every frame)
-        private static Vector2 _cachedGameViewSize;
-        private static double _lastGameViewSizeCheck;
-        private const double GameViewSizeCacheInterval = 0.5;
+        public static IAIBridgeScreenshotStorage Storage
+        {
+            get { return StorageInstance; }
+        }
 
-        /// <summary>
-        /// Get the screenshots directory path.
-        /// </summary>
+        public static IAIBridgeScreenshotProgress Progress
+        {
+            get { return ProgressInstance; }
+        }
+
         public static string ScreenshotsDir
         {
             get
@@ -54,76 +59,61 @@ namespace AIBridge.Editor
                     var projectRoot = Path.GetDirectoryName(Application.dataPath);
                     _screenshotsDir = Path.Combine(projectRoot, "AIBridgeCache", "screenshots");
                 }
+
                 return _screenshotsDir;
             }
         }
 
         /// <summary>
-        /// Capture Game view screenshot.
+        /// Compatibility entry point for Editor callers that only need one image.
         /// </summary>
         public static IEnumerator CaptureGameView(Action<ScreenshotResult> onFinish)
         {
-            EnsureScreenshotsDirectory();
-
-            var timestamp = DateTime.Now;
-            var filename = $"game_{timestamp:yyyyMMdd_HHmmss}_{Guid.NewGuid().ToString("N").Substring(0, 8)}.png";
-            var fullPath = Path.Combine(ScreenshotsDir, filename);
-
-            // Get Game View window
-            var gameView = GetGameView();
-            if (gameView == null)
+            AIBridgeScreenshotPipelineResult result = null;
+            var pipeline = AIBridgeScreenshotPipeline.CaptureImage(
+                Backend,
+                Storage,
+                null,
+                0,
+                value => { result = value; });
+            try
             {
-                onFinish?.Invoke(new ScreenshotResult
+                while (pipeline.MoveNext())
                 {
-                    Success = false,
-                    Error = "Cannot find Game View window. Make sure Game View is open.",
-                });
-                yield break;
+                    yield return pipeline.Current;
+                }
             }
-
-            // Get Game View size
-            var size = GetGameViewSize(gameView);
-            int width = (int)size.x;
-            int height = (int)size.y;
-
-            // Capture screenshot using ScreenCapture
-            ScreenCapture.CaptureScreenshot(fullPath);
-
-            // Wait briefly for file to be written
-            int retryCount = 0;
-            while (!File.Exists(fullPath) && retryCount < 100)
+            finally
             {
-                yield return new WaitForSeconds(0.1f);
-                retryCount++;
-            }
-
-            if (!File.Exists(fullPath))
-            {
-                onFinish?.Invoke(new ScreenshotResult
+                var disposablePipeline = pipeline as IDisposable;
+                if (disposablePipeline != null)
                 {
-                    Success = false,
-                    Error = "Failed to capture screenshot - file was not created."
-                });
-                yield break;
+                    disposablePipeline.Dispose();
+                }
             }
 
             onFinish?.Invoke(new ScreenshotResult
             {
-                Success = true,
-                ImagePath = fullPath,
-                Filename = filename,
-                Width = width,
-                Height = height,
-                Timestamp = timestamp.ToString("yyyyMMdd_HHmmss"),
+                Success = result != null && result.Success,
+                ImagePath = result == null ? null : result.Path,
+                Filename = result == null ? null : result.Filename,
+                Width = result == null ? 0 : result.Width,
+                Height = result == null ? 0 : result.Height,
+                Timestamp = result == null ? null : result.Timestamp,
+                Error = result == null ? "Screenshot capture did not complete." : result.Error
             });
         }
 
-        /// <summary>
-        /// Get the Unity Game View window using reflection.
-        /// </summary>
+        public static void EnsureScreenshotsDirectory()
+        {
+            if (!Directory.Exists(ScreenshotsDir))
+            {
+                Directory.CreateDirectory(ScreenshotsDir);
+            }
+        }
+
         private static EditorWindow GetGameView()
         {
-            // UnityEditor.GameView is in the UnityEditor assembly
             var gameViewType = Type.GetType("UnityEditor.GameView, UnityEditor");
             if (gameViewType == null)
             {
@@ -131,24 +121,22 @@ namespace AIBridge.Editor
                 return null;
             }
 
-            // Get the main Game View window
-            var getMainGameView = gameViewType.GetMethod("GetMainGameView", BindingFlags.Static | BindingFlags.NonPublic);
+            var getMainGameView = gameViewType.GetMethod(
+                "GetMainGameView",
+                BindingFlags.Static | BindingFlags.NonPublic);
             if (getMainGameView != null)
             {
                 return getMainGameView.Invoke(null, null) as EditorWindow;
             }
 
-            // Fallback: GetWindow with specific type
             return EditorWindow.GetWindow(gameViewType);
         }
 
-        /// <summary>
-        /// Get Game View resolution size.
-        /// </summary>
         private static Vector2 GetGameViewSize(EditorWindow gameView)
         {
-            // Try to get resolution from gameViewRenderResolution property
-            var prop = gameView.GetType().GetProperty("gameViewRenderResolution", BindingFlags.Instance | BindingFlags.Public);
+            var prop = gameView.GetType().GetProperty(
+                "gameViewRenderResolution",
+                BindingFlags.Instance | BindingFlags.Public);
             if (prop != null)
             {
                 var value = prop.GetValue(gameView);
@@ -158,8 +146,9 @@ namespace AIBridge.Editor
                 }
             }
 
-            // Try to get size from GetSize method (instance method)
-            var getSizeMethod = gameView.GetType().GetMethod("GetSize", BindingFlags.Instance | BindingFlags.Public);
+            var getSizeMethod = gameView.GetType().GetMethod(
+                "GetSize",
+                BindingFlags.Instance | BindingFlags.Public);
             if (getSizeMethod != null)
             {
                 var result = getSizeMethod.Invoke(gameView, null);
@@ -169,20 +158,24 @@ namespace AIBridge.Editor
                 }
             }
 
-            // Try to use GameViewSize property
-            var sizeProp = gameView.GetType().GetProperty("GameViewSize", BindingFlags.Instance | BindingFlags.Public);
+            var sizeProp = gameView.GetType().GetProperty(
+                "GameViewSize",
+                BindingFlags.Instance | BindingFlags.Public);
             if (sizeProp != null)
             {
                 var gameViewSize = sizeProp.GetValue(gameView);
                 if (gameViewSize != null)
                 {
-                    // GameViewSize has Width and Height properties
-                    var widthProp = gameViewSize.GetType().GetProperty("Width", BindingFlags.Instance | BindingFlags.Public);
-                    var heightProp = gameViewSize.GetType().GetProperty("Height", BindingFlags.Instance | BindingFlags.Public);
+                    var widthProp = gameViewSize.GetType().GetProperty(
+                        "Width",
+                        BindingFlags.Instance | BindingFlags.Public);
+                    var heightProp = gameViewSize.GetType().GetProperty(
+                        "Height",
+                        BindingFlags.Instance | BindingFlags.Public);
                     if (widthProp != null && heightProp != null)
                     {
-                        int width = (int)widthProp.GetValue(gameViewSize);
-                        int height = (int)heightProp.GetValue(gameViewSize);
+                        var width = (int)widthProp.GetValue(gameViewSize);
+                        var height = (int)heightProp.GetValue(gameViewSize);
                         if (width > 0 && height > 0)
                         {
                             return new Vector2(width, height);
@@ -191,190 +184,294 @@ namespace AIBridge.Editor
                 }
             }
 
-            // Try to get target display resolution from Unity
-            // For mobile games in portrait mode, check the default screen width/height
-            #if UNITY_ANDROID || UNITY_IPHONE
-            if (Screen.width > 0 && Screen.height > 0)
-            {
-                return new Vector2(Screen.width, Screen.height);
-            }
-            #endif
-
-            // Default fallback - check if portrait mode (height > width)
-            int defaultWidth = 1080;
-            int defaultHeight = 1920;
-            return new Vector2(defaultWidth, defaultHeight);
+            return new Vector2(1080, 1920);
         }
 
-        /// <summary>
-        /// Ensure screenshots directory exists.
-        /// </summary>
-        public static void EnsureScreenshotsDirectory()
+        private sealed class EditorGameViewScreenshotBackend : IAIBridgeScreenshotBackend
         {
-            if (!Directory.Exists(ScreenshotsDir))
+            public bool TryGetSize(out int width, out int height, out string error)
             {
-                Directory.CreateDirectory(ScreenshotsDir);
-            }
-        }
-        
-        public static GifRecordResult ConvertFramesToGif(List<string> framePaths, float scale, int fps, int colorCount)
-        {
-            var result = new GifRecordResult();
-
-            if (framePaths.Count == 0)
-            {
-                result.Success = false;
-                result.Error = "No frames to convert";
-                return result;
-            }
-
-            try
-            {
-                // Load first frame to get dimensions
-                var firstTex = LoadTextureFromFile(framePaths[0]);
-                if (firstTex == null)
+                width = 0;
+                height = 0;
+                error = null;
+                try
                 {
-                    result.Success = false;
-                    result.Error = "Failed to load first frame";
-                    return result;
-                }
-
-                int scaledWidth = Mathf.RoundToInt(firstTex.width * scale);
-                int scaledHeight = Mathf.RoundToInt(firstTex.height * scale);
-
-                // Create scaled textures
-                var frames = new List<Texture2D>();
-                foreach (var path in framePaths)
-                {
-                    var tex = LoadTextureFromFile(path);
-                    if (tex == null) continue;
-
-                    var scaled = ScaleTexture(tex, scaledWidth, scaledHeight);
-                    UnityEngine.Object.DestroyImmediate(tex);
-                    frames.Add(scaled);
-                }
-
-                if (frames.Count == 0)
-                {
-                    result.Success = false;
-                    result.Error = "Failed to load any frames";
-                    return result;
-                }
-
-                // Create GIF
-                ScreenshotHelper.EnsureScreenshotsDirectory();
-                string filename = $"gif_{DateTime.Now:yyyyMMdd_HHmmss}_{Guid.NewGuid().ToString("N").Substring(0, 8)}.gif";
-                string gifPath = Path.Combine(ScreenshotHelper.ScreenshotsDir, filename);
-
-                using (var fs = new FileStream(gifPath, FileMode.Create, FileAccess.Write))
-                using (var encoder = new GifEncoder(fs, scaledWidth, scaledHeight, fps, colorCount))
-                {
-                    int frameDelay = Mathf.Max(1, 100 / fps);
-
-                    for (int i = 0; i < frames.Count; i++)
+                    var gameView = GetGameView();
+                    if (gameView == null)
                     {
-                        var pixels = TextureToRgba(frames[i]);
-                        // AddFrame will auto-initialize on first frame
-                        encoder.AddFrame(pixels, frameDelay);
+                        error = "Cannot find Game View window. Make sure Game View is open.";
+                        return false;
                     }
 
-                    encoder.Finish();
-                }
+                    var size = GetGameViewSize(gameView);
+                    width = (int)size.x;
+                    height = (int)size.y;
+                    if (width <= 0 || height <= 0)
+                    {
+                        error = "Game View size is invalid.";
+                        return false;
+                    }
 
-                // Cleanup textures
-                foreach (var tex in frames)
+                    return true;
+                }
+                catch (Exception ex)
                 {
-                    UnityEngine.Object.DestroyImmediate(tex);
+                    error = ex.Message;
+                    return false;
+                }
+            }
+
+            public IEnumerator CaptureImage(Action<AIBridgeScreenshotFrame> completed)
+            {
+                int width;
+                int height;
+                string error;
+                if (!TryGetSize(out width, out height, out error))
+                {
+                    completed(AIBridgeScreenshotFrame.Failed(error));
+                    yield break;
                 }
 
-                var fileInfo = new FileInfo(gifPath);
-                result.Success = true;
-                result.GifPath = gifPath;
-                result.Filename = filename;
-                result.FrameCount = frames.Count;
-                result.Width = scaledWidth;
-                result.Height = scaledHeight;
-                result.Duration = (float)frames.Count / fps;
-                result.FileSize = fileInfo.Length;
-                result.Timestamp = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss");
-            }
-            catch (Exception ex)
-            {
-                result.Success = false;
-                result.Error = ex.Message;
+                byte[] pngBytes = null;
+                var capture = CapturePng(
+                    bytes => { pngBytes = bytes; },
+                    value => { error = value; });
+                try
+                {
+                    while (capture.MoveNext())
+                    {
+                        yield return capture.Current;
+                    }
+                }
+                finally
+                {
+                    var disposableCapture = capture as IDisposable;
+                    if (disposableCapture != null)
+                    {
+                        disposableCapture.Dispose();
+                    }
+                }
+
+                if (pngBytes == null)
+                {
+                    completed(AIBridgeScreenshotFrame.Failed(
+                        string.IsNullOrEmpty(error) ? "Failed to capture Game View." : error));
+                    yield break;
+                }
+
+                completed(new AIBridgeScreenshotFrame
+                {
+                    Success = true,
+                    PngBytes = pngBytes,
+                    Width = width,
+                    Height = height
+                });
             }
 
-            return result;
+            public IEnumerator CaptureGifFrame(
+                int width,
+                int height,
+                Action<AIBridgeScreenshotFrame> completed)
+            {
+                byte[] pngBytes = null;
+                string error = null;
+                var capture = CapturePng(
+                    bytes => { pngBytes = bytes; },
+                    value => { error = value; });
+                try
+                {
+                    while (capture.MoveNext())
+                    {
+                        yield return capture.Current;
+                    }
+                }
+                finally
+                {
+                    var disposableCapture = capture as IDisposable;
+                    if (disposableCapture != null)
+                    {
+                        disposableCapture.Dispose();
+                    }
+                }
+
+                if (pngBytes == null)
+                {
+                    completed(AIBridgeScreenshotFrame.Failed(
+                        string.IsNullOrEmpty(error) ? "Failed to capture Game View." : error));
+                    yield break;
+                }
+
+                try
+                {
+                    completed(new AIBridgeScreenshotFrame
+                    {
+                        Success = true,
+                        RgbaBytes = AIBridgeScreenshotPixelConverter.DecodePngScaleAndFlip(
+                            pngBytes,
+                            width,
+                            height),
+                        Width = width,
+                        Height = height
+                    });
+                }
+                catch (Exception ex)
+                {
+                    completed(AIBridgeScreenshotFrame.Failed(ex.Message));
+                }
+            }
+
+            public object CreateDelay(float seconds)
+            {
+                return new WaitForSeconds(seconds);
+            }
+
+            private static IEnumerator CapturePng(
+                Action<byte[]> completed,
+                Action<string> failed)
+            {
+                var tempPath = Path.Combine(
+                    Path.GetTempPath(),
+                    "aibridge_capture_" + Guid.NewGuid().ToString("N") + ".png");
+                try
+                {
+                    var captureStarted = true;
+                    try
+                    {
+                        ScreenCapture.CaptureScreenshot(tempPath);
+                    }
+                    catch (Exception ex)
+                    {
+                        failed(ex.Message);
+                        captureStarted = false;
+                    }
+
+                    if (!captureStarted)
+                    {
+                        yield break;
+                    }
+
+                    var retryCount = 0;
+                    while (!File.Exists(tempPath) && retryCount < 100)
+                    {
+                        yield return new WaitForSeconds(0.1f);
+                        retryCount++;
+                    }
+
+                    if (!File.Exists(tempPath))
+                    {
+                        failed("Failed to capture screenshot - file was not created.");
+                        yield break;
+                    }
+
+                    try
+                    {
+                        completed(File.ReadAllBytes(tempPath));
+                    }
+                    catch (Exception ex)
+                    {
+                        failed(ex.Message);
+                    }
+                }
+                finally
+                {
+                    TryDelete(tempPath);
+                }
+            }
         }
 
-        private static Texture2D LoadTextureFromFile(string path)
+        private sealed class EditorScreenshotStorage : IAIBridgeScreenshotStorage
+        {
+            public AIBridgeScreenshotOutput CreateOutput(AIBridgeScreenshotKind kind)
+            {
+                EnsureScreenshotsDirectory();
+                var timestamp = DateTime.Now;
+                string filename;
+                string formattedTimestamp;
+                if (kind == AIBridgeScreenshotKind.Image)
+                {
+                    filename = "game_" + timestamp.ToString("yyyyMMdd_HHmmss") + "_"
+                        + Guid.NewGuid().ToString("N").Substring(0, 8) + ".png";
+                    formattedTimestamp = timestamp.ToString("yyyyMMdd_HHmmss");
+                }
+                else
+                {
+                    filename = "gif_" + timestamp.ToString("yyyyMMdd_HHmmss") + "_"
+                        + Guid.NewGuid().ToString("N").Substring(0, 8) + ".gif";
+                    formattedTimestamp = timestamp.ToString("yyyy-MM-ddTHH:mm:ss");
+                }
+
+                var path = Path.Combine(ScreenshotsDir, filename);
+                return new AIBridgeScreenshotOutput
+                {
+                    Path = path,
+                    WritePath = path + ".part",
+                    Filename = filename,
+                    Timestamp = formattedTimestamp
+                };
+            }
+
+            public bool TryPublish(AIBridgeScreenshotOutput output, out string error)
+            {
+                try
+                {
+                    File.Move(output.WritePath, output.Path);
+                    error = null;
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    error = ex.Message;
+                    return false;
+                }
+            }
+
+            public void Cleanup(AIBridgeScreenshotOutput output, bool published)
+            {
+                TryDelete(output.WritePath);
+                if (!published)
+                {
+                    TryDelete(output.Path);
+                }
+            }
+        }
+
+        private sealed class EditorScreenshotProgress : IAIBridgeScreenshotProgress
+        {
+            public void Report(AIBridgeScreenshotProgressStage stage, int current, int total)
+            {
+                if (stage == AIBridgeScreenshotProgressStage.Finalizing)
+                {
+                    EditorUtility.DisplayProgressBar("Creating GIF", "Finalizing GIF...", 1f);
+                    return;
+                }
+
+                if (current == 1 || current == total || current % 5 == 0)
+                {
+                    EditorUtility.DisplayProgressBar(
+                        "Capturing Frames",
+                        "Frame " + current + "/" + total,
+                        current / (float)total);
+                }
+            }
+
+            public void Clear()
+            {
+                EditorUtility.ClearProgressBar();
+            }
+        }
+
+        private static void TryDelete(string path)
         {
             try
             {
-                var bytes = File.ReadAllBytes(path);
-                var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
-                tex.LoadImage(bytes);
-                tex.Apply();
-                return tex;
+                if (File.Exists(path))
+                {
+                    File.Delete(path);
+                }
             }
             catch
             {
-                return null;
             }
-        }
-
-        private static Texture2D ScaleTexture(Texture2D source, int width, int height)
-        {
-            var result = new Texture2D(width, height, TextureFormat.RGBA32, false);
-            for (int y = 0; y < height; y++)
-            {
-                for (int x = 0; x < width; x++)
-                {
-                    float u = (float)x / width;
-                    float v = (float)y / height;
-                    result.SetPixel(x, y, source.GetPixelBilinear(u, v));
-                }
-            }
-            result.Apply();
-            return result;
-        }
-
-        private static byte[] TextureToRgba(Texture2D tex)
-        {
-            var pixels = tex.GetPixels32();
-            int width = tex.width;
-            int height = tex.height;
-            var result = new byte[width * height * 4];
-
-            // Flip vertically: GIF expects bottom-to-top order
-            for (int y = 0; y < height; y++)
-            {
-                int srcRow = height - 1 - y; // Flip vertically
-                for (int x = 0; x < width; x++)
-                {
-                    int srcIndex = srcRow * width + x;
-                    int dstIndex = (y * width + x) * 4;
-                    result[dstIndex] = pixels[srcIndex].r;
-                    result[dstIndex + 1] = pixels[srcIndex].g;
-                    result[dstIndex + 2] = pixels[srcIndex].b;
-                    result[dstIndex + 3] = pixels[srcIndex].a;
-                }
-            }
-            return result;
-        }
-
-        public class GifRecordResult
-        {
-            public bool Success;
-            public string GifPath;
-            public string Filename;
-            public int FrameCount;
-            public int Width;
-            public int Height;
-            public float Duration;
-            public long FileSize;
-            public string Timestamp;
-            public string Error;
         }
     }
 }

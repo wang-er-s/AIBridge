@@ -19,13 +19,13 @@ namespace AIBridge.Editor
             int timeoutMs,
             Action<bool, object, string> onCompleted)
         {
-            timeoutMs = AIBridgeRuntimeProtocol.NormalizeTimeoutMs(timeoutMs);
+            timeoutMs = AIBridgeProtocol.NormalizeTimeoutMs(timeoutMs);
             var requestBody = new AIBridgeSelfCodeExecuteRequest
             {
                 id = Guid.NewGuid().ToString("N"),
-                action = AIBridgeRuntimeProtocol.CodeExecuteAction,
+                action = AIBridgeProtocol.CodeExecuteAction,
                 assemblyBase64 = Convert.ToBase64String(assemblyBytes),
-                sha256 = AIBridgeRuntimeProtocol.ComputeSha256(assemblyBytes),
+                sha256 = AIBridgeProtocol.ComputeSha256(assemblyBytes),
                 entryType = entryType,
                 methodName = methodName,
                 riskAccepted = true,
@@ -34,7 +34,7 @@ namespace AIBridge.Editor
 
             var post = Post(
                 baseUrl,
-                AIBridgeRuntimeProtocol.CodeExecutePath,
+                AIBridgeProtocol.CodeExecutePath,
                 requestBody,
                 timeoutMs,
                 onCompleted);
@@ -61,14 +61,14 @@ namespace AIBridge.Editor
             Dictionary<string, object> parameters,
             int timeoutMs)
         {
-            timeoutMs = AIBridgeRuntimeProtocol.NormalizeTimeoutMs(timeoutMs);
+            timeoutMs = AIBridgeProtocol.NormalizeTimeoutMs(timeoutMs);
             var success = false;
             object result = null;
             string error = null;
             var requestBody = new AIBridgeSelfCommandExecuteRequest
             {
                 id = Guid.NewGuid().ToString("N"),
-                action = AIBridgeRuntimeProtocol.CommandExecuteAction,
+                action = AIBridgeProtocol.CommandExecuteAction,
                 type = command,
                 parameters = parameters ?? new Dictionary<string, object>(),
                 timeoutMs = timeoutMs
@@ -76,7 +76,7 @@ namespace AIBridge.Editor
 
             var post = Post(
                 baseUrl,
-                AIBridgeRuntimeProtocol.CommandExecutePath,
+                AIBridgeProtocol.CommandExecutePath,
                 requestBody,
                 timeoutMs,
                 (completedSuccessfully, responseResult, executeError) =>
@@ -133,7 +133,7 @@ namespace AIBridge.Editor
             int timeoutMs,
             Action<bool, object, string> onCompleted)
         {
-            timeoutMs = AIBridgeRuntimeProtocol.NormalizeTimeoutMs(timeoutMs);
+            timeoutMs = AIBridgeProtocol.NormalizeTimeoutMs(timeoutMs);
             Uri parsedUrl;
             if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out parsedUrl)
                 || !string.Equals(parsedUrl.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase))

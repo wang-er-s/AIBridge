@@ -193,7 +193,7 @@ namespace AIBridge.Editor
 
             var runtimeUrl = request.GetParam<string>("url");
             if (!string.IsNullOrEmpty(runtimeUrl) &&
-                AIBridgeRuntimeCommandRegistry.TryGet(entry.Name, out _))
+                AIBridgeCommandRegistry.TryGet(entry.Name, out _))
             {
                 var runtimeParameters = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
                 if (request.@params != null)
@@ -210,8 +210,8 @@ namespace AIBridge.Editor
                     }
                 }
 
-                var runtimeTimeout = AIBridgeRuntimeProtocol.NormalizeTimeoutMs(
-                    request.GetParam<int>("runtimeTimeout", AIBridgeRuntimeProtocol.DefaultExecutionTimeoutMs));
+                var runtimeTimeout = AIBridgeProtocol.NormalizeTimeoutMs(
+                    request.GetParam<int>("runtimeTimeout", AIBridgeProtocol.DefaultExecutionTimeoutMs));
                 var runtimeCoroutine = RuntimeCodeExecuteClient.ExecuteCommand(
                     runtimeUrl,
                     entry.Name,
