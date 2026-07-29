@@ -10,11 +10,14 @@ public static class CodeExecuteCommand
 {
     [AIBridge("执行C#代码片段或脚本文件。不传 url 时在 Editor 执行，传入手机 Runtime URL 时编译并下发到 Player 执行。",
         example:@"
-Windows CMD 必须使用单引号包裹代码：
+Bash：
 AIBridgeCLI CodeExecuteCommand_Execute --code 'using UnityEngine; Debug.Log(""Hello"");' --raw
 
-PowerShell 或 Bash 可以使用双引号（需要转义）：
-AIBridgeCLI CodeExecuteCommand_Execute --code ""using UnityEngine; Debug.Log(\""Hello\"");"" --raw
+PowerShell：
+& ""$PWD/AIBridgeCache/CLI/AIBridgeCLI.exe"" CodeExecuteCommand_Execute --code 'using UnityEngine; Debug.Log(""Hello"");' --raw
+
+Windows CMD 建议使用 --file，避免命令行引号转义：
+AIBridgeCLI.exe CodeExecuteCommand_Execute --file ""C:\path\to\code.cs"" --raw
 
 // 上边代码是你需要提供的逻辑，不需要写方法，只需要写using和逻辑
 // 以上的代码会被编译成下边的

@@ -19,11 +19,13 @@ namespace AIBridge.Runtime
     {
         [AIBridge(
             "通过完整层级路径、坐标或实例 ID 模拟点击。Runtime 重名路径需同时提供 path + instanceId；" +
-            "可用 CodeExecuteCommand_Execute 检查层级路径和 GetInstanceID (Only Runtime)",
+            "查询路径和 instanceId 时，调用 " +
+            "AIBridgeGameObjectResolver.GetHierarchyPath(gameObject) 和 " +
+            "gameObject.GetInstanceID()",
             "AIBridgeCLI InputSimulationCommand_Click --path \"Canvas/Button\" --instanceId -123",
             "InputSimulationCommand_Click")]
         public static IEnumerator Click(
-            [Description("GameObject 的完整层级路径；可用 CodeExecuteCommand_Execute 检查")] string path = null,
+            [Description("GameObject 的完整层级路径")] string path = null,
             [Description("屏幕坐标对象：{\"x\":number,\"y\":number}")] object point = null,
             [Description("GameObject 的实例 ID；Editor 可单独使用，Runtime 必须与 path 一起使用")]
             object instanceId = null,
@@ -40,7 +42,9 @@ namespace AIBridge.Runtime
 
         [AIBridge(
             "通过完整层级路径、坐标或实例 ID 点数组模拟拖拽。Runtime 重名路径点需同时提供 path + " +
-            "instanceId；可用 CodeExecuteCommand_Execute 检查层级路径和 GetInstanceID (Only Runtime)",
+            "instanceId；查询路径和 instanceId 时，调用 " +
+            "AIBridgeGameObjectResolver.GetHierarchyPath(gameObject) 和 " +
+            "gameObject.GetInstanceID() ",
             "AIBridgeCLI InputSimulationCommand_Drag --points " +
             "'[{\"path\":\"Canvas/Item\",\"instanceId\":-123},{\"x\":480,\"y\":720}]'",
             "InputSimulationCommand_Drag")]
@@ -58,12 +62,14 @@ namespace AIBridge.Runtime
 
         [AIBridge(
             "通过完整层级路径、坐标或实例 ID 模拟长按。Runtime 重名路径需同时提供 path + instanceId；" +
-            "可用 CodeExecuteCommand_Execute 检查层级路径和 GetInstanceID (Only Runtime)",
+            "查询路径和 instanceId 时，调用 " +
+            "AIBridgeGameObjectResolver.GetHierarchyPath(gameObject) 和 " +
+            "gameObject.GetInstanceID()",
             "AIBridgeCLI InputSimulationCommand_LongPress --path \"Canvas/Button\" " +
             "--instanceId -123 --duration 1000",
             "InputSimulationCommand_LongPress")]
         public static IEnumerator LongPress(
-            [Description("GameObject 的完整层级路径；可用 CodeExecuteCommand_Execute 检查")] string path = null,
+            [Description("GameObject 的完整层级路径")] string path = null,
             [Description("屏幕坐标对象：{\"x\":number,\"y\":number}")] object point = null,
             [Description("GameObject 的实例 ID；Editor 可单独使用，Runtime 必须与 path 一起使用")]
             object instanceId = null,

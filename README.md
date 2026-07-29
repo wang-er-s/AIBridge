@@ -49,7 +49,7 @@ AI 编码助手与 Unity Editor 之间的文件通信框架。
 ## 系统要求
 
 - Unity 2021.3 或更高版本
-- .NET 6.0 Runtime（用于 CLI 工具）
+- .NET 9.0 Runtime（用于 CLI 工具）
 - Newtonsoft.Json (com.unity.nuget.newtonsoft-json)
 
 ## 快速开始
@@ -60,13 +60,7 @@ AI 编码助手与 Unity Editor 之间的文件通信框架。
 
 1. **打开设置窗口**：`Window > AIBridge`
 2. **安装 Skill 到 Agent**：切换到 `Tools` 标签，点击 **"Copy To Agent"** 按钮，将 Skill 文档安装到 agent的skills 目录
-3. **配置自动扫描**（可选）：
-   - 切换到 `Commands` 标签
-   - 启用 **"Auto Scan on Startup"** 选项
-   - 在 **"Scan Assemblies"** 文本框中配置要扫描的程序集（默认：`Assembly-CSharp-Editor-firstpass;Assembly-CSharp`）
-   - 如果你的自定义命令在其他程序集中，需要添加到此列表，多个程序集用分号分隔
-
-**注意：** 如果包安装在 `Library/PackageCache`（不可修改），则自动扫描会被强制启用。
+3. **确认命令**：保持 Unity Editor 打开，运行 `AIBridgeCLI Commands` 查看当前已注册命令。
 
 ### 1. 添加自定义命令
 
@@ -103,59 +97,29 @@ public static class MyCustomCommand
 
 ### 2. 刷新命令列表
 
-添加自定义命令后，需要重新扫描并生成 Skill 文档：
-
-1. 打开 `Window > AIBridge` 窗口
-2. 切换到 `Commands` 标签
-3. 点击 **"Refresh Command List"** 按钮（如果启用了 Auto Scan，此按钮会隐藏，命令会自动扫描）
-
-**这个操作会：**
-- 扫描指定程序集中的所有命令
-- 更新命令注册表
-- 自动重新生成 `Skill~/SKILL.md` 文档
-- 自动更新已安装的 Agent Skill 文档
-
-**重要：** 每次添加或修改自定义命令后，都需要点击此按钮来更新 Skill 文档，这样 AI 助手才能识别你的新命令。
+添加自定义命令后，不需要重新生成 Skill 文档。打开 Unity Editor 后，使用
+`AIBridgeCLI Commands` 查看当前注册命令，使用 `AIBridgeCLI <CommandName> --help`
+查看参数详情。
 
 ### 3. 使用命令
 
 使用 CLI 工具或让 AI 助手调用你的命令：
 
 ```bash
-AIBridgeCLI.exe MyCustomCommand_CreateCustomCube --name "MyCube" --size 2.0
+AIBridgeCLI MyCustomCommand_CreateCustomCube --name "MyCube" --size 2.0
 ```
 
 ## 命令注册
 
-### 自动扫描模式
-
-在 `Window > AIBridge` 的 `Commands` 标签中启用 **"Auto Scan on Startup"**：
-
-- Unity 启动时会自动扫描并注册命令
-- 在 **"Scan Assemblies"** 文本框中指定要扫描的程序集（默认：`Assembly-CSharp-Editor-firstpass;Assembly-CSharp`）
-- 多个程序集用分号（`;`）分隔
-- 如果你的自定义命令在其他程序集中（如 `MyCustomCommands`），需要添加到列表中：`Assembly-CSharp-Editor-firstpass;Assembly-CSharp;MyCustomCommands`
-
-**注意：** 如果包安装在 `Library/PackageCache`（不可修改），则自动扫描会被强制启用。
-
-### 手动刷新模式
-
-如果禁用自动扫描：
-
-1. 命令将从内置的 `CommandRegistry.AutoRegister()` 方法注册
-2. 添加新命令后，需要手动在设置窗口的 `Commands` 标签点击 **"Refresh Command List"** 按钮
-3. 这会重新扫描所有程序集并更新 Skill 文档
-
 ## Skill 文档
 
-`Skill~/SKILL.md` 文件是为 AI 助手（如 Droid、Claude、GPT 等）自动生成的文档。包含：
+`Skill~/SKILL.md` 文件是为 AI 助手（如 Droid、Claude、GPT 等）维护的使用指南。
+命令列表不再写入 Skill 文件，使用 CLI 实时查询：
 
-- 所有已注册命令的名称和描述（内置 + 自定义）
-- 每个命令的参数详情（类型和描述）
-- 使用示例
-- CLI 语法
-
-你可以自己添加需要的内容，但是不要在 <!-- AUTO-GENERATED-COMMANDS-START --> <!-- AUTO-GENERATED-COMMANDS-END -->之中添加
+```bash
+AIBridgeCLI Commands
+AIBridgeCLI <CommandName> --help
+```
 
 ### 安装 Skill 到 Agent 目录
 
@@ -177,17 +141,9 @@ AIBridgeCLI.exe MyCustomCommand_CreateCustomCube --name "MyCube" --size 2.0
 
 ### 更新 Skill 文档
 
-当你添加或修改自定义命令后：
-
-**方法 1：自动更新（推荐）**
-- 在 `Commands` 标签点击 **"Refresh Command List"** 按钮
-- 这会自动重新生成 Skill 文档并更新所有已安装的 Agent 目录
-
-**方法 2：手动更新**
-- 在 `Tools` 标签点击 **"Generate Skill"** 按钮重新生成文档
-- 然后点击 **"Copy To Agent"** 按钮更新 Agent 目录
-
-**使用方法：** AI 助手会自动读取 `.factory/skills/aibridge/SKILL.md` 文件，从而识别所有可用的 Unity Editor 控制命令。
+修改固定工作流或使用说明后，直接编辑 `Skill~/SKILL.md`，然后在 `Tools` 标签点击
+**"Copy To Agent"** 更新 Agent 目录。命令元数据通过 `AIBridgeCLI Commands` 和
+`AIBridgeCLI <CommandName> --help` 实时获取。
 
 ## 许可证
 

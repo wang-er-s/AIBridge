@@ -24,6 +24,7 @@ namespace AIBridge.Editor
         /// Maximum commands to process per frame
         /// </summary>
         private const int MAX_COMMANDS_PER_FRAME = 5;
+        private const string CliPlatformMarkerFile = ".platform";
 
         private static double _lastPollTime;
         private static CommandWatcher _watcher;
@@ -75,7 +76,10 @@ namespace AIBridge.Editor
             
             // Get the exchange directory
             BridgeDirectory = GetExchangeDirectory();
-            BridgeCLI = Path.Combine(BridgeDirectory, "CLI", "AIBridgeCLI.exe");
+            BridgeCLI = Path.Combine(
+                BridgeDirectory,
+                "CLI",
+                GetPlatformCliExecutableName());
 
             // Copy CLI to AIBridgeCache if needed
             CopyCLIIfNeeded();
@@ -219,10 +223,24 @@ namespace AIBridge.Editor
 #endif
         }
 
+        private static string GetPlatformCliExecutableName()
+        {
+#if UNITY_EDITOR_WIN
+            return "AIBridgeCLI.exe";
+#else
+            return "AIBridgeCLI";
+#endif
+        }
+
+        public static bool RefreshCLI()
+        {
+            return CopyCLIIfNeeded(true);
+        }
+
         /// <summary>
         /// Copy CLI executables to AIBridgeCache if needed
         /// </summary>
-        private static void CopyCLIIfNeeded()
+        private static bool CopyCLIIfNeeded(bool force = false)
         {
             try
             {
@@ -237,13 +255,35 @@ namespace AIBridge.Editor
                 if (!Directory.Exists(sourcePath))
                 {
                     AIBridgeLogger.LogWarning($"CLI source not found: {sourcePath}");
-                    return;
+                    return false;
                 }
 
                 // Create target directory if needed
                 if (!Directory.Exists(targetPath))
                 {
                     Directory.CreateDirectory(targetPath);
+                }
+
+                var markerPath = Path.Combine(targetPath, CliPlatformMarkerFile);
+                var cachedPlatform = File.Exists(markerPath)
+                    ? File.ReadAllText(markerPath).Trim()
+                    : string.Empty;
+                var platformChanged = !string.Equals(
+                    cachedPlatform,
+                    platformFolder,
+                    System.StringComparison.Ordinal);
+
+                if (platformChanged)
+                {
+                    foreach (var targetFile in Directory.GetFiles(targetPath))
+                    {
+                        var fileName = Path.GetFileName(targetFile);
+                        if (fileName != CliPlatformMarkerFile &&
+                            !File.Exists(Path.Combine(sourcePath, fileName)))
+                        {
+                            File.Delete(targetFile);
+                        }
+                    }
                 }
 
                 // Copy all files from source to target
@@ -253,18 +293,24 @@ namespace AIBridge.Editor
                     var targetFile = Path.Combine(targetPath, fileName);
                     
                     // Only copy if target doesn't exist or source is newer
-                    if (!File.Exists(targetFile) || File.GetLastWriteTime(sourceFile) > File.GetLastWriteTime(targetFile))
+                    if (force ||
+                        platformChanged ||
+                        !File.Exists(targetFile) ||
+                        File.GetLastWriteTime(sourceFile) > File.GetLastWriteTime(targetFile))
                     {
                         File.Copy(sourceFile, targetFile, true);
                         AIBridgeLogger.LogDebug($"Copied CLI file: {fileName}");
                     }
                 }
 
+                File.WriteAllText(markerPath, platformFolder);
                 AIBridgeLogger.LogDebug($"CLI ready at: {targetPath}");
+                return true;
             }
             catch (System.Exception ex)
             {
                 AIBridgeLogger.LogError($"Failed to copy CLI: {ex.Message}");
+                return false;
             }
         }
     }

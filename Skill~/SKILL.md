@@ -1,6 +1,6 @@
 ---
 name: aibridge
-description: 通过 AI Bridge CLI 自动化 Unity Editor 操作 - 管理 GameObject、场景、资源、预制体、组件，执行 C# 代码，截图和控制播放模式。当用户需要以编程方式与 Unity 项目交互时使用。
+description: 通过 AI Bridge CLI 自动化 Unity Editor 操作，执行 C# 代码、查询状态、测试输入、读取日志和捕获截图。当用户需要以编程方式与 Unity 项目交互时使用。
 ---
 
 # AI Bridge Unity Skill
@@ -20,9 +20,11 @@ description: 通过 AI Bridge CLI 自动化 Unity Editor 操作 - 管理 GameObj
 ## 前置条件
 
 - Unity 项目已安装 AI Bridge 包
-- CLI 位置：`AIBridgeCache\CLI\AIBridgeCLI.exe`
-- 始终添加 `--raw` 标志以获取 JSON 输出
-- `E:\path\to\AIBridgeCLI.exe Compile --help` 查看全局帮助
+- CLI 位置：`AIBridgeCache/CLI/`，Windows 使用 `AIBridgeCLI.exe`，macOS/Linux 使用 `AIBridgeCLI`
+- 执行命令并由脚本解析结果时添加 `--raw`；查看帮助时可省略
+- `AIBridgeCLI --help` 查看全局帮助
+- `AIBridgeCLI Commands` 查看当前 Editor 已注册命令
+- `AIBridgeCLI <CommandName> --help` 查看命令详情
 
 常用全局参数：
 
@@ -32,125 +34,98 @@ description: 通过 AI Bridge CLI 自动化 Unity Editor 操作 - 管理 GameObj
 - `--quiet` - 安静模式，减少额外输出
 - `--json <json>` - 透传并合并 JSON 参数，同名字段会覆盖
 - `--stdin` - 从标准输入读取 JSON 参数
-- `--help` - 显示帮助
+- `--help` / `-h` - 显示帮助，不执行命令
+
+对应的CLI位于：
+
+- macOS/Linux：`./AIBridgeCache/CLI/AIBridgeCLI`
+- Windows PowerShell：`& "$PWD/AIBridgeCache/CLI/AIBridgeCLI.exe"`
 
 当命令执行时间可能超过默认 5 秒时，必须显式增加 `--timeout`，例如：
 
-- 编译：`AIBridgeCLI.exe Compile --raw --timeout 300000`
-- 跑测试：`AIBridgeCLI.exe CodeExecuteCommand_Execute --code '...' --raw --timeout 300000`
+- 编译：`AIBridgeCLI Compile --raw --timeout 300000`
+- 跑测试：`AIBridgeCLI CodeExecuteCommand_Execute --code '...' --raw --timeout 300000`
 - 截图/GIF 等较慢操作：按实际情况设置更大的超时
 
-在 Windows PowerShell 中调用 `AIBridgeCLI.exe` 时注意命令写法：
+在 Windows PowerShell 中调用 `AIBridgeCLI.exe` 时使用 `&`：
 
 - 如果可执行文件路径 **不包含空格**，优先直接写：
   `E:\path\to\AIBridgeCLI.exe Compile --raw`
 - 如果路径 **包含空格**，必须写成：
   `& "E:\path with spaces\AIBridgeCLI.exe" Compile --raw`
 
-不要写成：
-
-`"E:\path\to\AIBridgeCLI.exe" Compile --raw`
+不要只用引号包裹可执行文件路径而不加 `&`。
 
 ## 常见工作流
 
 ### 工作流 1：测试 UI 交互
 
 1. 创建 UI 元素（Canvas、Button、EventSystem）
-2. 进入播放模式：`EditorCommand_Play`
-3. 模拟点击：`InputSimulationCommand_Click --path "Canvas/Button1"`
+2. 进入播放模式：`AIBridgeCLI EditorCommand_Play`
+3. 模拟点击：`AIBridgeCLI InputSimulationCommand_Click --path "Canvas/Button1" --raw`
 4. 使用代码执行验证结果
-5. 退出播放模式：`EditorCommand_Stop`
+5. 退出播放模式：`AIBridgeCLI EditorCommand_Stop`
 
 **注意：** UI 点击需要场景中有 EventSystem。
 
-### 工作流 2：调试场景对象
+### 工作流 2：查询输入目标路径
 
-1. 获取场景层级：`SceneCommand_GetHierarchy`
-2. 查找特定对象：`GameObjectCommand_Find --name "Player"`
-3. 获取组件信息：`InspectorCommand_GetComponents --path "Player"`
-4. 执行代码检查/修改：`CodeExecuteCommand_Execute --code '...'`
+需要查询 GameObject 的完整层级路径和实例 ID 时，使用
+`CodeExecuteCommand_Execute` 遍历场景对象，并调用
+`AIBridgeGameObjectResolver.GetHierarchyPath(gameObject)`：
+
+```bash
+AIBridgeCLI CodeExecuteCommand_Execute --code 'using System.Linq; using UnityEngine; using AIBridge.Runtime; return string.Join("\n", Resources.FindObjectsOfTypeAll<GameObject>().Where(go => go.scene.IsValid() && go.scene.isLoaded).Select(go => AIBridgeGameObjectResolver.GetHierarchyPath(go) + " | instanceId=" + go.GetInstanceID()));' --raw
+```
+
+Runtime 中存在重名路径时，输入命令必须同时提供 `path` 和 `instanceId`。
 
 ### 工作流 3：快速代码原型
 
 1. 编写 C# 代码片段（仅 using 语句 + 逻辑）
-2. 执行：`CodeExecuteCommand_Execute --code 'using UnityEngine; Debug.Log("Test");'`
+2. 执行：`AIBridgeCLI CodeExecuteCommand_Execute --code 'using UnityEngine; Debug.Log("Test");' --raw`
 3. 在 Unity 控制台查看输出
 4. 快速迭代，无需创建脚本文件
 
 **对于较长代码：** 保存到 `AIBridgeCache/code/` 并使用 `--file` 参数。
+只读查询建议显式使用 `return`，结果通常包含返回值和执行输出。
 
-### 工作流 4：资源管理
+### 工作流 4：编译验证代码是否有报错
 
-1. 搜索资源：`AssetDatabaseCommand_Search --mode prefab --keyword "Player"`
-2. 加载资源信息：`AssetDatabaseCommand_Load --assetPath "Assets/Prefabs/Player.prefab"`
-3. 根据需要实例化或修改
-
-### 工作流 5：编译验证代码是否有报错
-
-1. 编译unity：`Compile`
+1. 编译 Unity：`AIBridgeCLI Compile --raw --timeout 300000`
 2. 查看返回值是否有报错
 
-## 如何查询命令详情
+## 命令发现和帮助
 
-### 查看命令详细用法
+Editor 已打开即可查询命令，不需要进入 Play Mode。先列出当前命令：
 
 ```bash
-AIBridgeCLI GameObjectCommand_Find --help
+AIBridgeCLI Commands
 ```
 
-返回包含：
+需要机器可读结果时：
 
-- 命令描述
-- 参数列表（名称、类型、是否必需、描述、默认值）
-- 使用示例
+```bash
+AIBridgeCLI Commands --raw
+```
 
-通常来说使用一个命令前，你都要查询一下该命令的详细用法（除非你之前查询过）
+查看某个命令详情：
 
-<!-- AUTO-GENERATED-COMMANDS-START -->
-## 命令分类
+```bash
+AIBridgeCLI InputSimulationCommand_Click --help
+AIBridgeCLI InputSimulationCommand_Click -h
+```
 
--- **Compile** - 编译代码，并返回编译结果，如果有报错是会直接返回，不需要再查看Log
-
-### CodeExecute
-
-- **CodeExecuteCommand_Execute** - 执行C#代码片段或脚本文件。不传 url 时在 Editor 执行，传入手机 Runtime URL 时编译并下发到 Player 执行。
-
-### Editor
-
-- **EditorCommand_GetState** - 获取当前编辑器状态（播放/暂停/编译状态）
-- **EditorCommand_Log** - 向 Unity 控制台输出日志消息
-- **EditorCommand_Pause** - 切换或设置暂停状态
-- **EditorCommand_Play** - 进入播放模式
-- **EditorCommand_Stop** - 退出播放模式
-
-### GetLogs
-
-- **GetLogsCommand_StartCapture** - 开始捕获日志到缓冲区（精准模式），捕获的日志带毫秒级时间戳
-- **GetLogsCommand_StopCapture** - 停止捕获日志，返回捕获的日志总数
-- **Log** - 从 Unity 编辑器获取控制台日志
-
-### InputSimulation
-
-- **InputSimulationCommand_Click** - 通过路径模拟点击 GameObject (Only Runtime)
-- **InputSimulationCommand_ClickAt** - 在屏幕坐标处模拟点击 (Only Runtime)
-- **InputSimulationCommand_ClickByInstanceId** - 通过实例 ID 模拟点击 GameObject (Only Runtime)
-- **InputSimulationCommand_Drag** - 通过路径模拟从一个对象拖动到另一个对象 (Only Runtime)
-- **InputSimulationCommand_DragByInstanceId** - 通过实例 ID 模拟从一个对象拖动到另一个对象 (Only Runtime)
-- **InputSimulationCommand_LongPress** - 通过路径模拟长按 GameObject (Only Runtime)
-- **InputSimulationCommand_LongPressByInstanceId** - 通过实例 ID 模拟长按 GameObject (Only Runtime)
-
-### Screenshot
-
-- **ScreenshotCommand_Gif** - 捕获多个截图并合成 GIF，至少需要 15 秒超时
-- **ScreenshotCommand_Image** - 捕获 Game 视图的截图
-
-<!-- AUTO-GENERATED-COMMANDS-END -->
+命令详情包含描述、Usage、参数类型、必填状态、默认值和示例。`--help` / `-h` 会在执行前拦截，不会执行目标命令。
 
 ## 边界情况和故障排除
 
 - **"NoEventSystem"** - 为 UI 交互添加 EventSystem
 - **长时间操作** - 使用 `--timeout` 参数（例如 GIF 需要 15 秒以上）
-- **路径未找到** - 使用 `SceneCommand_GetHierarchy` 验证路径
+- **"Unknown command"** - 先运行 `AIBridgeCLI Commands`，不要使用 Skill 中未列出的旧命令
 - **代码执行错误** - 检查 using 语句和语法
+- **"Timeout waiting for result"** - 确认 Unity Editor 已打开、AI Bridge 已启用，并检查 `AIBridgeCache/CLI/.platform`
+- **CLI 平台不匹配** - 在 `Window > AIBridge` 设置中点击 `Replace CLI`
+- **无日志** - `Log --raw` 无日志时可能返回提示字符串，不要假设所有命令的 `data` 都是数组
 
 ---

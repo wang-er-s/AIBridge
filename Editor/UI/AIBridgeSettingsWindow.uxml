@@ -42,6 +42,7 @@
                         <ui:Label text="CLI Path:" class="info-label" />
                         <ui:TextField name="cli-path" readonly="true" class="info-value" />
                         <ui:Button name="open-cli-dir" text="Open" class="small-button" />
+                        <ui:Button name="refresh-cli" text="Replace CLI" class="small-button" />
                     </ui:VisualElement>
                 </ui:VisualElement>
             </ui:VisualElement>
@@ -89,8 +90,7 @@
             <ui:VisualElement name="content-tools" class="tab-content" style="display: none;">
                 <ui:VisualElement class="section">
                     <ui:Label text="Skill Documentation" class="section-title" />
-                    <ui:Label text="Generate SKILL.md file for Droid integration" class="help-text" />
-                    <ui:Button name="generate-skill" text="Generate SKILL.md" class="action-button" />
+                    <ui:Label text="Skill~/SKILL.md is maintained manually. Use AIBridgeCLI Commands to discover current commands and command-level --help for details." class="help-text" />
                 </ui:VisualElement>
                 
                 <ui:VisualElement class="section">

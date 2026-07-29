@@ -173,18 +173,28 @@ namespace AIBridge.Editor
                 EditorUtility.RevealInFinder(ScreenshotHelper.ScreenshotsDir);
             rootVisualElement.Q<Button>("open-cli-dir").clicked += () => 
                 EditorUtility.RevealInFinder(Path.GetDirectoryName(AIBridge.BridgeCLI));
+            rootVisualElement.Q<Button>("refresh-cli").clicked += RefreshCLI;
 
             _installHybridClrButton.clicked += InstallHybridClr;
 
             // Tools buttons
-            rootVisualElement.Q<Button>("generate-skill").clicked += ()=>
-            {
-                SkillInstaller.GenerateSkillFile();
-                SkillInstaller.OverrideSkill();
-            };
             rootVisualElement.Q<Button>("install-skill-agent").clicked += SkillInstaller.CopyToAgent;
             rootVisualElement.Q<Button>("clear-cache").clicked += ClearCache;
             rootVisualElement.Q<Button>("reset-settings").clicked += ResetSettings;
+        }
+
+        private void RefreshCLI()
+        {
+            if (AIBridge.RefreshCLI())
+            {
+                ShowNotification(new GUIContent("CLI replaced"));
+                return;
+            }
+
+            EditorUtility.DisplayDialog(
+                "AI Bridge",
+                "Failed to replace CLI. Check the Unity Console for details.",
+                "OK");
         }
 
         private void OnDestroy()

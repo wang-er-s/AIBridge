@@ -49,7 +49,7 @@ File-based communication framework between AI Code assistants and Unity Editor.
 ## Requirements
 
 - Unity 2021.3 or later
-- .NET 6.0 Runtime (for CLI tool)
+- .NET 9.0 Runtime (for CLI tool)
 - Newtonsoft.Json (com.unity.nuget.newtonsoft-json)
 
 ## Quick Start
@@ -60,13 +60,7 @@ After installing AI Bridge, you need to complete the following initialization st
 
 1. **Open Settings Window**: `Window > AIBridge`
 2. **Install Skill to Agent**: Switch to the `Tools` tab and click the **"Copy To Agent"** button to install the Skill documentation to the agent's skills directory
-3. **Configure Auto-Scan** (Optional):
-   - Switch to the `Commands` tab
-   - Enable the **"Auto Scan on Startup"** option
-   - Configure the assemblies to scan in the **"Scan Assemblies"** text field (default: `Assembly-CSharp-Editor-firstpass;Assembly-CSharp`)
-   - If your custom commands are in other assemblies, add them to this list, separated by semicolons
-
-**Note:** If the package is installed in `Library/PackageCache` (immutable), auto-scan is forced on.
+3. **Verify Commands**: Keep Unity Editor open and run `AIBridgeCLI Commands` to list registered commands.
 
 ### 1. Add Custom Commands
 
@@ -101,61 +95,31 @@ public static class MyCustomCommand
 - Use `[Description]` for parameter documentation (optional, defaults to field name if not provided)
 - Return `CommandResult.Success()` or `CommandResult.Failure()`
 
-### 2. Refresh Command List
+### 2. Discover Commands
 
-After adding custom commands, you need to rescan and regenerate the Skill documentation:
-
-1. Open the `Window > AIBridge` window
-2. Switch to the `Commands` tab
-3. Click the **"Refresh Command List"** button (if Auto Scan is enabled, this button will be hidden and commands will be scanned automatically)
-
-**This operation will:**
-- Scan all commands in the specified assemblies
-- Update the command registry
-- Automatically regenerate the `Skill~/SKILL.md` documentation
-- Automatically update the installed Agent Skill documentation
-
-**Important:** Every time you add or modify custom commands, you need to click this button to update the Skill documentation so that AI assistants can recognize your new commands.
+After adding custom commands, you do not need to regenerate the Skill documentation.
+With Unity Editor open, use `AIBridgeCLI Commands` to list registered commands and
+`AIBridgeCLI <CommandName> --help` to inspect parameters.
 
 ### 3. Use Commands
 
 Use the CLI tool or let AI assistants call your commands:
 
 ```bash
-AIBridgeCLI.exe MyCustomCommand_CreateCustomCube --name "MyCube" --size 2.0
+AIBridgeCLI MyCustomCommand_CreateCustomCube --name "MyCube" --size 2.0
 ```
 
 ## Command Registration
 
-### Auto-Scan Mode
-
-Enable **"Auto Scan on Startup"** in the `Commands` tab of `Window > AIBridge`:
-
-- Unity will automatically scan and register commands on startup
-- Specify the assemblies to scan in the **"Scan Assemblies"** text field (default: `Assembly-CSharp-Editor-firstpass;Assembly-CSharp`)
-- Multiple assemblies are separated by semicolons (`;`)
-- If your custom commands are in other assemblies (e.g., `MyCustomCommands`), add them to the list: `Assembly-CSharp-Editor-firstpass;Assembly-CSharp;MyCustomCommands`
-
-**Note:** If the package is installed in `Library/PackageCache` (immutable), auto-scan is forced on.
-
-### Manual Refresh Mode
-
-If auto-scan is disabled:
-
-1. Commands are registered from the built-in `CommandRegistry.AutoRegister()` method
-2. After adding new commands, manually click the **"Refresh Command List"** button in the `Commands` tab of the settings window
-3. This will rescan all assemblies and update the Skill documentation
-
 ## Skill Documentation
 
-The `Skill~/SKILL.md` file is auto-generated documentation for AI assistants (like Droid, Claude, GPT, etc.). It includes:
+The `Skill~/SKILL.md` file is maintained guidance for AI assistants (like Droid, Claude, and GPT).
+The command list is no longer written into the Skill file. Query current metadata through the CLI:
 
-- All registered command names and descriptions (built-in + custom)
-- Parameter details for each command (types and descriptions)
-- Usage examples
-- CLI syntax
-
-You can add your own content, but do not add anything between `<!-- AUTO-GENERATED-COMMANDS-START -->` and `<!-- AUTO-GENERATED-COMMANDS-END -->`
+```bash
+AIBridgeCLI Commands
+AIBridgeCLI <CommandName> --help
+```
 
 ### Install Skill to Agent Directory
 
@@ -177,17 +141,9 @@ You can add your own content, but do not add anything between `<!-- AUTO-GENERAT
 
 ### Update Skill Documentation
 
-When you add or modify custom commands:
-
-**Method 1: Auto Update (Recommended)**
-- Click the **"Refresh Command List"** button in the `Commands` tab
-- This will automatically regenerate the Skill documentation and update all installed Agent directories
-
-**Method 2: Manual Update**
-- Click the **"Generate Skill"** button in the `Tools` tab to regenerate the documentation
-- Then click the **"Copy To Agent"** button to update the Agent directories
-
-**Usage:** AI assistants will automatically read the `.factory/skills/aibridge/SKILL.md` file to recognize all available Unity Editor control commands.
+When you change fixed workflows or usage guidance, edit `Skill~/SKILL.md` directly, then click
+**"Copy To Agent"** in the `Tools` tab to update Agent directories. Query command metadata at
+runtime with `AIBridgeCLI Commands` and `AIBridgeCLI <CommandName> --help`.
 
 ## License
 
