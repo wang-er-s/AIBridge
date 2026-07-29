@@ -1,13 +1,13 @@
 ---
 name: aibridge
-description: 通过 AI Bridge CLI 自动化 Unity Editor 操作，执行 C# 代码、查询状态、测试输入、读取日志和捕获截图。当用户需要以编程方式与 Unity 项目交互时使用。
+description: 通过 AI Bridge CLI 自动化 Unity Editor 和手机 Player Runtime，执行 C# 代码、查询状态、测试输入、读取日志和捕获截图。当用户需要以编程方式与 Unity Editor 或手机 App 交互时使用。
 ---
 
 # AI Bridge Unity Skill
 
 ## 概述
 
-通过 AI Bridge CLI 以编程方式控制 Unity Editor，用于快速原型开发、测试和自动化。
+通过 AI Bridge CLI 以编程方式控制 Unity Editor 和手机 Player Runtime，用于快速原型开发、测试和自动化。
 
 ## 何时使用此 Skill
 
@@ -16,6 +16,7 @@ description: 通过 AI Bridge CLI 自动化 Unity Editor 操作，执行 C# 代�
 - 使用代码执行进行快速原型开发
 - 自动化重复的 Editor 任务
 - 为文档捕获截图或 GIF
+- 通过局域网或 ADB 测试手机 App
 
 ## 前置条件
 
@@ -25,6 +26,7 @@ description: 通过 AI Bridge CLI 自动化 Unity Editor 操作，执行 C# 代�
 - `AIBridgeCLI --help` 查看全局帮助
 - `AIBridgeCLI Commands` 查看当前 Editor 已注册命令
 - `AIBridgeCLI <CommandName> --help` 查看命令详情
+- 手机命令仍由本地 Editor 转发，Editor 和手机 Player 都必须保持运行
 
 常用全局参数：
 
@@ -95,6 +97,76 @@ Runtime 中存在重名路径时，输入命令必须同时提供 `path` 和 `in
 1. 编译 Unity：`AIBridgeCLI Compile --raw --timeout 300000`
 2. 查看返回值是否有报错
 
+## 手机 Runtime
+
+手机 Player 默认使用 Development Build 启用 Runtime Bridge。Release Build 只有在
+Runtime 设置中显式允许后才能启用。测试期间保持 App 在前台，后台暂停可能导致请求超时。
+
+### 连接手机
+
+局域网连接不需要 ADB。电脑和手机位于同一可信局域网时，使用手机 IP：
+
+```bash
+curl http://192.168.1.20:27182/aibridge-self/health
+AIBridgeCLI CodeExecuteCommand_Execute --code 'return "LAN_OK";' --url http://192.168.1.20:27182 --runtimeTimeout 30000 --raw --timeout 60000
+```
+
+如果出现 `Insecure connection not allowed`，在 Player Settings 中将
+`InsecureHttpOption` 设为 `AlwaysAllowed`；测试结束后按项目安全要求恢复。
+
+USB 调试可通过 ADB 把电脑本地端口映射到手机：
+
+```bash
+adb devices -l
+adb forward tcp:27182 tcp:27182
+curl http://127.0.0.1:27182/aibridge-self/health
+```
+
+ADB 模式使用 `--url http://127.0.0.1:27182`。局域网模式直接使用
+`--url http://<手机IP>:27182`，不需要执行 `adb forward`。
+
+远程命令同时受两个超时控制：
+
+- `--runtimeTimeout`：Editor 等待手机 Runtime 的时间
+- `--timeout`：CLI 等待 Editor 返回结果的时间，必须大于 `runtimeTimeout`
+
+只有命令帮助中包含 `url` 参数的命令才能转发到手机。执行前使用
+`AIBridgeCLI <CommandName> --help` 确认。
+
+### 手机输入测试
+
+- 场景必须存在 `EventSystem`，否则返回 `event_system_missing`
+- UI 目标需要正常的 Canvas Raycaster 和 Pointer Handler
+- 2D Sprite 目标需要相机上的 `Physics2DRaycaster`、目标上的 `Collider2D` 和 Pointer Handler
+- Runtime 重名路径必须同时提供 `path` 和 `instanceId`
+- `instanceId` 在 App 重启或重新安装后会变化，执行输入前重新查询
+- 坐标必须是有限非负数，并位于 `Screen.width`、`Screen.height` 范围内
+- 横竖屏切换会改变屏幕坐标，切换后重新查询目标位置
+- Drag 的首个点使用目标 `path`，后续点可使用屏幕坐标
+
+示例：
+
+```bash
+AIBridgeCLI InputSimulationCommand_Drag --points '[{"path":"SnakeDragSurface","instanceId":-1170},{"x":1588,"y":143}]' --url http://192.168.1.20:27182 --runtimeTimeout 30000 --raw --timeout 60000
+```
+
+### 下载手机截图和 GIF
+
+远程截图结果中的 `imagePath` / `gifPath` 是手机文件路径，电脑不能直接读取。
+使用返回的 `downloadUrl` 下载到当前工作区：
+
+```bash
+AIBridgeCLI ScreenshotCommand_Image --url http://192.168.1.20:27182 --runtimeTimeout 120000 --raw --timeout 180000
+curl -o AIBridgeCache/phone-screenshot.png "http://192.168.1.20:27182/aibridge-self/artifacts/<filename>.png"
+```
+
+GIF 使用相同流程。Player 关闭或重新安装后，旧下载地址可能失效。
+
+### 手机测试安全
+
+Runtime Bridge 可执行代码。只在可信私有网络启用，不要将 `27182` 映射到公网。
+App 重启或重新安装会清除临时对象、日志捕获状态和旧实例 ID。
+
 ## 命令发现和帮助
 
 Editor 已打开即可查询命令，不需要进入 Play Mode。先列出当前命令：
@@ -120,7 +192,9 @@ AIBridgeCLI InputSimulationCommand_Click -h
 
 ## 边界情况和故障排除
 
-- **"NoEventSystem"** - 为 UI 交互添加 EventSystem
+- **`event_system_missing`** - 为输入交互添加 EventSystem
+- **`Insecure connection not allowed`** - 允许 Player Settings 中的 HTTP 连接
+- **`Cannot connect to destination host`** - 检查 Player 是否运行、IP、端口、防火墙和 AP 隔离
 - **长时间操作** - 使用 `--timeout` 参数（例如 GIF 需要 15 秒以上）
 - **"Unknown command"** - 先运行 `AIBridgeCLI Commands`，不要使用 Skill 中未列出的旧命令
 - **代码执行错误** - 检查 using 语句和语法
