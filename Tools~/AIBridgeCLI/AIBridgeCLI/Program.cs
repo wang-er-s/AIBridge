@@ -6,6 +6,8 @@ namespace AIBridgeCLI;
 
 public class Program
 {
+    private const string CommandsCommandName = "Commands";
+
     public static int Main(string[] args)
     {
         // Set console output encoding to UTF-8
@@ -27,11 +29,15 @@ public class Program
     {
         var parsed = ParsedArgs.Parse(args);
             
-        // Global help
-        if (parsed.Help && string.IsNullOrEmpty(parsed.CommandName))
+        if (string.IsNullOrEmpty(parsed.CommandName))
         {
             Console.WriteLine(HelpProvider.GetGlobalHelp());
-            return 0;
+            return parsed.Help ? 0 : 1;
+        }
+
+        if (parsed.Help)
+        {
+            return RunCommandHelp(parsed);
         }
 
         if (parsed.CommandName == "Compile")
@@ -88,7 +94,35 @@ public class Program
         }
 
         var result = sender.SendCommand(request);
-        OutputFormatter.PrintResult(result, parsed.OutputMode);
+        if (string.Equals(parsed.CommandName, CommandsCommandName, StringComparison.OrdinalIgnoreCase))
+            OutputFormatter.PrintHelpResult(result, parsed.OutputMode);
+        else
+            OutputFormatter.PrintResult(result, parsed.OutputMode);
+        return result.success ? 0 : 1;
+    }
+
+    private static int RunCommandHelp(ParsedArgs parsed)
+    {
+        var commandName = parsed.CommandName;
+        if (string.Equals(commandName, CommandsCommandName, StringComparison.OrdinalIgnoreCase) &&
+            parsed.Options.TryGetValue("command", out var requestedCommand) &&
+            !string.IsNullOrWhiteSpace(requestedCommand))
+        {
+            commandName = requestedCommand;
+        }
+
+        var request = new CommandRequest
+        {
+            id = PathHelper.GenerateCommandId(),
+            type = CommandsCommandName,
+            @params = new Dictionary<string, object>
+            {
+                { "command", commandName }
+            }
+        };
+
+        var result = new CommandSender(parsed.Timeout).SendCommand(request);
+        OutputFormatter.PrintHelpResult(result, parsed.OutputMode);
         return result.success ? 0 : 1;
     }
 
@@ -101,9 +135,23 @@ public class Program
         if (string.Equals(parsed.CommandName, "focus", StringComparison.OrdinalIgnoreCase))
             return 0;
 
-        if (parsed.Help && string.IsNullOrEmpty(parsed.CommandName))
+        if (string.IsNullOrEmpty(parsed.CommandName))
         {
             Console.WriteLine(HelpProvider.GetGlobalHelp());
+            return parsed.Help ? 0 : 1;
+        }
+
+        if (parsed.Help)
+        {
+            request = new CommandRequest
+            {
+                id = PathHelper.GenerateCommandId(),
+                type = CommandsCommandName,
+                @params = new Dictionary<string, object>
+                {
+                    { "command", parsed.CommandName }
+                }
+            };
             return 0;
         }
 

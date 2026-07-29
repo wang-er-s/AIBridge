@@ -304,7 +304,10 @@ namespace AIBridge.Runtime
                 return;
             }
 
-            var context = new AIBridgeCommandContext(request, () => pending.IsClosed);
+            var context = new AIBridgeCommandContext(
+                request,
+                () => pending.IsClosed,
+                AIBridgeCommandHost.Player);
             IEnumerator routine;
             try
             {

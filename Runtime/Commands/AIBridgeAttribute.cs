@@ -1,6 +1,6 @@
 using System;
 
-namespace AIBridge.Editor
+namespace AIBridge.Runtime
 {
     [AttributeUsage(AttributeTargets.Method)]
     public class AIBridgeAttribute : Attribute

@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Reflection;
+using AIBridge.Runtime;
 using UnityEditor;
 using UnityEngine;
 
@@ -13,21 +14,19 @@ namespace AIBridge.Editor
     {
         private class CoroutineHandle
         {
-            public IEnumerator Coroutine;
             public Action<CommandResult> OnComplete;
             public string RequestId;
             public Stopwatch Timer;
-            public IEnumerator CurrentEnumerator;
+            public Stack<IEnumerator> Enumerators;
 
             private double _waitStartTime;
             private float _waitDuration;
+            private CustomYieldInstruction _customYieldInstruction;
 
             public bool Step()
             {
                 try
                 {
-                    var currentCoroutine = CurrentEnumerator ?? Coroutine;
-
                     while (true)
                     {
                         if (_waitDuration > 0)
@@ -40,18 +39,29 @@ namespace AIBridge.Editor
                             _waitDuration = 0;
                         }
 
-                        if (!currentCoroutine.MoveNext())
+                        if (_customYieldInstruction != null)
                         {
-                            if (CurrentEnumerator != null)
+                            if (_customYieldInstruction.keepWaiting)
                             {
-                                CurrentEnumerator = null;
                                 return false;
                             }
 
+                            _customYieldInstruction = null;
+                        }
+
+                        if (Enumerators.Count == 0)
+                        {
                             var result = CommandResult.SuccessWithId(RequestId);
                             result.executionTime = Timer.ElapsedMilliseconds;
                             OnComplete?.Invoke(result);
                             return true;
+                        }
+
+                        var currentCoroutine = Enumerators.Peek();
+                        if (!currentCoroutine.MoveNext())
+                        {
+                            Dispose(Enumerators.Pop());
+                            continue;
                         }
 
                         var current = currentCoroutine.Current;
@@ -75,23 +85,38 @@ namespace AIBridge.Editor
 
                         if (current is CustomYieldInstruction instruction)
                         {
+                            _customYieldInstruction = instruction;
                             if (instruction.keepWaiting)
                             {
                                 return false;
                             }
+                            _customYieldInstruction = null;
                             continue;
                         }
 
                         if (current is IEnumerator nestedCoroutine)
                         {
-                            CurrentEnumerator = nestedCoroutine;
-                            return false;
+                            Enumerators.Push(nestedCoroutine);
+                            continue;
+                        }
+
+                        if (current is AIBridgeCommandOutcome outcome)
+                        {
+                            var outcomeResult = outcome.Success
+                                ? CommandResult.Success(outcome.Result)
+                                : CommandResult.Failure(FormatError(outcome));
+                            outcomeResult.id = RequestId;
+                            outcomeResult.executionTime = Timer.ElapsedMilliseconds;
+                            DisposeAll();
+                            OnComplete?.Invoke(outcomeResult);
+                            return true;
                         }
 
                         if (current is CommandResult commandResult)
                         {
                             commandResult.id = RequestId;
                             commandResult.executionTime = Timer.ElapsedMilliseconds;
+                            DisposeAll();
                             OnComplete?.Invoke(commandResult);
                             return true;
                         }
@@ -101,10 +126,39 @@ namespace AIBridge.Editor
                 }
                 catch (Exception ex)
                 {
+                    DisposeAll();
                     var result = CommandResult.FromException(RequestId, ex);
                     result.executionTime = Timer.ElapsedMilliseconds;
                     OnComplete?.Invoke(result);
                     return true;
+                }
+            }
+
+            private static string FormatError(AIBridgeCommandOutcome outcome)
+            {
+                if (string.IsNullOrEmpty(outcome.ErrorCode) ||
+                    outcome.ErrorCode == "command_failed")
+                {
+                    return outcome.ErrorMessage;
+                }
+
+                return outcome.ErrorCode + ": " + outcome.ErrorMessage;
+            }
+
+            private void DisposeAll()
+            {
+                while (Enumerators.Count > 0)
+                {
+                    Dispose(Enumerators.Pop());
+                }
+            }
+
+            private static void Dispose(IEnumerator enumerator)
+            {
+                var disposable = enumerator as IDisposable;
+                if (disposable != null)
+                {
+                    disposable.Dispose();
                 }
             }
         }
@@ -132,12 +186,20 @@ namespace AIBridge.Editor
 
         public static void Start(IEnumerator coroutine, Action<CommandResult> onComplete, string requestId)
         {
+            if (coroutine == null)
+            {
+                var result = CommandResult.SuccessWithId(requestId);
+                result.executionTime = 0;
+                onComplete?.Invoke(result);
+                return;
+            }
+
             _running.Add(new CoroutineHandle
             {
-                Coroutine = coroutine,
                 OnComplete = onComplete,
                 RequestId = requestId,
-                Timer = Stopwatch.StartNew()
+                Timer = Stopwatch.StartNew(),
+                Enumerators = new Stack<IEnumerator>(new[] { coroutine })
             });
         }
 

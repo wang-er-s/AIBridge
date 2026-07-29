@@ -91,6 +91,13 @@ public class ParsedArgs
             {
                 var key = arg.Substring(2);
 
+                if (result.IsBooleanGlobalOption(key))
+                {
+                    result.TrySetGlobalOption(key, "true");
+                    i++;
+                    continue;
+                }
+
                 if (i + 1 < args.Length && !args[i + 1].StartsWith("--"))
                 {
                     if (result.TrySetGlobalOption(key, args[i + 1]))
@@ -114,6 +121,13 @@ public class ParsedArgs
             }
             else if (arg.StartsWith("-"))
             {
+                if (arg == "-h")
+                {
+                    result.TrySetGlobalOption("help", "true");
+                    i++;
+                    continue;
+                }
+
                 throw new ArgumentException($"Short form arguments not supported: {arg}");
             }
             else
@@ -132,5 +146,15 @@ public class ParsedArgs
         }
 
         return result;
+    }
+
+    private bool IsBooleanGlobalOption(string key)
+    {
+        if (!GlobalOptionProperties.TryGetValue(key, out var property))
+        {
+            return false;
+        }
+
+        return property.PropertyType == typeof(bool);
     }
 }

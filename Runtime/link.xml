@@ -1,0 +1,8 @@
+<linker>
+  <assembly fullname="cn.lys.aibridge.Runtime">
+    <type fullname="AIBridge.Runtime.AIBridgeAttribute" preserve="all" />
+    <type fullname="AIBridge.Runtime.AIBridgeLogCommands" preserve="all" />
+    <type fullname="AIBridge.Runtime.AIBridgeInputCommands" preserve="all" />
+    <type fullname="AIBridge.Runtime.AIBridgeScreenshotCommands" preserve="all" />
+  </assembly>
+</linker>

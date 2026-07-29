@@ -50,6 +50,70 @@ public static class OutputFormatter
         }
     }
 
+    public static void PrintHelpResult(CommandResult result, OutputMode mode)
+    {
+        if (!result.success || mode == OutputMode.Raw || mode == OutputMode.Quiet)
+        {
+            PrintResult(result, mode);
+            return;
+        }
+
+        var data = result.data as JObject;
+        if (data?["commands"] is JArray categories)
+        {
+            Console.WriteLine("Commands:");
+            foreach (var category in categories)
+            {
+                Console.WriteLine();
+                Console.WriteLine($"  {category["category"]}");
+                if (category["commands"] is not JArray commands)
+                {
+                    continue;
+                }
+
+                foreach (var command in commands)
+                {
+                    Console.WriteLine($"    {command["name"],-40} {command["description"]}");
+                }
+            }
+            return;
+        }
+
+        if (data?["command"] is JObject commandDetails)
+        {
+            Console.WriteLine(commandDetails["name"]);
+            Console.WriteLine($"  {commandDetails["description"]}");
+            Console.WriteLine();
+            Console.WriteLine($"Usage: {commandDetails["usage"]}");
+
+            if (commandDetails["parameters"] is JArray parameters && parameters.Count > 0)
+            {
+                Console.WriteLine();
+                Console.WriteLine("Options:");
+                foreach (var parameter in parameters)
+                {
+                    var required = parameter["required"]?.Value<bool>() == true ? "required" : "optional";
+                    var defaultValue = parameter["defaultValue"]?.Type == JTokenType.Null
+                        ? string.Empty
+                        : $" default={parameter["defaultValue"]}";
+                    Console.WriteLine(
+                        $"  --{parameter["name"],-24} {parameter["type"],-8} {required}{defaultValue}");
+                    Console.WriteLine($"      {parameter["description"]}");
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(commandDetails["example"]?.ToString()))
+            {
+                Console.WriteLine();
+                Console.WriteLine("Example:");
+                Console.WriteLine($"  {commandDetails["example"]}");
+            }
+            return;
+        }
+
+        PrintResult(result, mode);
+    }
+
     private static void PrintRaw(CommandResult result)
     {
         var json = JsonConvert.SerializeObject(result, Formatting.None);

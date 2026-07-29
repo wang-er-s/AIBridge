@@ -175,6 +175,30 @@ namespace AIBridgeCLI.Tests
             Assert.Null(req);
         }
 
+        [Fact]
+        public void CommandHelp_QueriesCommandsWithoutExecutingTarget()
+        {
+            int exit = InvokeTest(["EditorCommand_Play", "--help"], out var req);
+
+            Assert.Equal(0, exit);
+            Assert.NotNull(req);
+            Assert.Equal("Commands", req.type);
+            Assert.Equal("EditorCommand_Play", req.@params["command"]);
+        }
+
+        [Fact]
+        public void Commands_QueriesCommandDetails()
+        {
+            int exit = InvokeTest(
+                ["Commands", "--command", "EditorCommand_Play"],
+                out var req);
+
+            Assert.Equal(0, exit);
+            Assert.NotNull(req);
+            Assert.Equal("Commands", req.type);
+            Assert.Equal("EditorCommand_Play", req.@params["command"]);
+        }
+
         // ===========================================================================
         // 7. Request structure invariants
         // ===========================================================================

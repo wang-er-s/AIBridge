@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.ComponentModel;
+using AIBridge.Runtime;
 
 namespace AIBridge.Editor
 {
@@ -27,6 +28,14 @@ namespace AIBridge.Editor
             if (t == typeof(float) || t == typeof(double)) return "number";
             if (t == typeof(bool)) return "boolean";
             return "string";
+        }
+
+        public string GetCategoryName()
+        {
+            var typeName = Method.DeclaringType?.Name ?? "Other";
+            return typeName
+                .Replace("AIBridge", string.Empty)
+                .Replace("Command", string.Empty);
         }
     }
 }

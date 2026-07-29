@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.ComponentModel;
 using UnityEngine;
 using UnityEngine.EventSystems;
 
@@ -16,33 +17,96 @@ namespace AIBridge.Runtime
 
     public static class AIBridgeInputCommands
     {
-        public static IEnumerator Click(AIBridgeCommandContext context)
+        [AIBridge(
+            "通过完整层级路径、坐标或实例 ID 模拟点击。Runtime 重名路径需同时提供 path + instanceId；" +
+            "可用 CodeExecuteCommand_Execute 检查层级路径和 GetInstanceID (Only Runtime)",
+            "AIBridgeCLI InputSimulationCommand_Click --path \"Canvas/Button\" --instanceId -123",
+            "InputSimulationCommand_Click")]
+        public static IEnumerator Click(
+            [Description("GameObject 的完整层级路径；可用 CodeExecuteCommand_Execute 检查")] string path = null,
+            [Description("屏幕坐标对象：{\"x\":number,\"y\":number}")] object point = null,
+            [Description("GameObject 的实例 ID；Editor 可单独使用，Runtime 必须与 path 一起使用")]
+            object instanceId = null,
+            [Description("手机 Runtime URL；为空时在 Editor 执行")] string url = null,
+            [Description("手机 Runtime 执行超时，单位毫秒")]
+            int runtimeTimeout = AIBridgeProtocol.DefaultExecutionTimeoutMs)
         {
-            yield return Click(
+            yield return RunClick(
+                path,
+                point,
+                instanceId,
+                AIBridgeCommandHost.Current.InputResolver);
+        }
+
+        [AIBridge(
+            "通过完整层级路径、坐标或实例 ID 点数组模拟拖拽。Runtime 重名路径点需同时提供 path + " +
+            "instanceId；可用 CodeExecuteCommand_Execute 检查层级路径和 GetInstanceID (Only Runtime)",
+            "AIBridgeCLI InputSimulationCommand_Drag --points " +
+            "'[{\"path\":\"Canvas/Item\",\"instanceId\":-123},{\"x\":480,\"y\":720}]'",
+            "InputSimulationCommand_Drag")]
+        public static IEnumerator Drag(
+            [Description(
+                "拖拽点数组，每项为 {\"path\":\"...\"}、{\"path\":\"...\",\"instanceId\":integer}、" +
+                "{\"instanceId\":integer} 或 {\"x\":number,\"y\":number}；Runtime 不接受单独 instanceId")]
+            object points,
+            [Description("手机 Runtime URL；为空时在 Editor 执行")] string url = null,
+            [Description("手机 Runtime 执行超时，单位毫秒")]
+            int runtimeTimeout = AIBridgeProtocol.DefaultExecutionTimeoutMs)
+        {
+            yield return RunDrag(points, AIBridgeCommandHost.Current.InputResolver);
+        }
+
+        [AIBridge(
+            "通过完整层级路径、坐标或实例 ID 模拟长按。Runtime 重名路径需同时提供 path + instanceId；" +
+            "可用 CodeExecuteCommand_Execute 检查层级路径和 GetInstanceID (Only Runtime)",
+            "AIBridgeCLI InputSimulationCommand_LongPress --path \"Canvas/Button\" " +
+            "--instanceId -123 --duration 1000",
+            "InputSimulationCommand_LongPress")]
+        public static IEnumerator LongPress(
+            [Description("GameObject 的完整层级路径；可用 CodeExecuteCommand_Execute 检查")] string path = null,
+            [Description("屏幕坐标对象：{\"x\":number,\"y\":number}")] object point = null,
+            [Description("GameObject 的实例 ID；Editor 可单独使用，Runtime 必须与 path 一起使用")]
+            object instanceId = null,
+            [Description("按压持续时间（毫秒）")] int duration = 1000,
+            [Description("手机 Runtime URL；为空时在 Editor 执行")] string url = null,
+            [Description("手机 Runtime 执行超时，单位毫秒")]
+            int runtimeTimeout = AIBridgeProtocol.DefaultExecutionTimeoutMs)
+        {
+            yield return RunLongPress(
+                path,
+                point,
+                instanceId,
+                duration,
+                AIBridgeCommandHost.Current.InputResolver);
+        }
+
+        public static IEnumerator ExecuteClick(AIBridgeCommandContext context)
+        {
+            yield return RunClick(
                 context.Parameters.GetObject("path"),
                 context.Parameters.GetObject("point"),
                 context.Parameters.GetObject("instanceId"),
-                new AIBridgePathInputTargetResolver());
+                context.Host.InputResolver);
         }
 
-        public static IEnumerator Drag(AIBridgeCommandContext context)
+        public static IEnumerator ExecuteDrag(AIBridgeCommandContext context)
         {
-            yield return Drag(
+            yield return RunDrag(
                 context.Parameters.GetRequiredObject("points"),
-                new AIBridgePathInputTargetResolver());
+                context.Host.InputResolver);
         }
 
-        public static IEnumerator LongPress(AIBridgeCommandContext context)
+        public static IEnumerator ExecuteLongPress(AIBridgeCommandContext context)
         {
-            yield return LongPress(
+            yield return RunLongPress(
                 context.Parameters.GetObject("path"),
                 context.Parameters.GetObject("point"),
                 context.Parameters.GetObject("instanceId"),
                 context.Parameters.GetInt32("duration", 1000),
-                new AIBridgePathInputTargetResolver());
+                context.Host.InputResolver);
         }
 
-        public static IEnumerator Click(
+        public static IEnumerator RunClick(
             object path,
             object point,
             object instanceId,
@@ -99,7 +163,7 @@ namespace AIBridge.Runtime
             yield return PerformClick(gameObject, screenPosition);
         }
 
-        public static IEnumerator Drag(object rawPoints, IAIBridgeInputTargetResolver resolver)
+        public static IEnumerator RunDrag(object rawPoints, IAIBridgeInputTargetResolver resolver)
         {
             AIBridgeCommandOutcome failure;
             if (!CanUse(out failure))
@@ -135,7 +199,7 @@ namespace AIBridge.Runtime
             yield return PerformDrag(source, positions);
         }
 
-        public static IEnumerator LongPress(
+        public static IEnumerator RunLongPress(
             object path,
             object point,
             object instanceId,
@@ -632,7 +696,7 @@ namespace AIBridge.Runtime
             }
 
             var normalizedPath = target.Path.Trim('/');
-            EnsurePathLookup();
+            RebuildPathLookup();
             List<GameObject> pathMatches;
             if (!_matchesByPath.TryGetValue(normalizedPath, out pathMatches))
             {
@@ -671,13 +735,8 @@ namespace AIBridge.Runtime
             return true;
         }
 
-        private void EnsurePathLookup()
+        private void RebuildPathLookup()
         {
-            if (_matchesByPath != null)
-            {
-                return;
-            }
-
             _matchesByPath = new Dictionary<string, List<GameObject>>(
                 System.StringComparer.Ordinal);
             var gameObjects = Resources.FindObjectsOfTypeAll<GameObject>();

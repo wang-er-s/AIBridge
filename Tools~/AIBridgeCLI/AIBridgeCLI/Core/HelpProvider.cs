@@ -10,6 +10,9 @@ public static class HelpProvider
         sb.AppendLine("AIBridgeCLI - Unity command forwarder");
         sb.AppendLine();
         sb.AppendLine("Usage:");
+        sb.AppendLine("  AIBridgeCLI --help");
+        sb.AppendLine("  AIBridgeCLI Commands");
+        sb.AppendLine("  AIBridgeCLI <CommandName> --help");
         sb.AppendLine("  AIBridgeCLI <CommandName> [options]");
         sb.AppendLine();
         sb.AppendLine("Global Options:");
@@ -19,15 +22,14 @@ public static class HelpProvider
         sb.AppendLine("  --quiet            Quiet mode");
         sb.AppendLine("  --json <json>      Merge JSON object into forwarded params (overrides same keys)");
         sb.AppendLine("  --stdin            Read params JSON from stdin");
-        sb.AppendLine("  --help             Show this help");
+        sb.AppendLine("  --help, -h         Show help without executing a command");
         sb.AppendLine();
         sb.AppendLine("Examples:");
-        sb.AppendLine("  AIBridgeCLI GameObjectCommand_Find --name \"Main Camera\"");
-        sb.AppendLine("  AIBridgeCLI ScreenshotCommand_Game");
-        sb.AppendLine("  AIBridgeCLI GetLogsCommand_Log --count 10");
-        sb.AppendLine("  AIBridgeCLI Help");
+        sb.AppendLine("  AIBridgeCLI Commands");
+        sb.AppendLine("  AIBridgeCLI InputSimulationCommand_Click --help");
+        sb.AppendLine("  AIBridgeCLI EditorCommand_Play");
         sb.AppendLine();
-        sb.AppendLine("Tip: use [AIBridgeCLI Help --command XXX] command to get command detail.");
+        sb.AppendLine("Use `AIBridgeCLI Commands --command <CommandName>` for machine-readable command metadata.");
 
         return sb.ToString();
     }

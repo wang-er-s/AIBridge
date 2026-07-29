@@ -95,7 +95,7 @@ description: 通过 AI Bridge CLI 自动化 Unity Editor 操作 - 管理 GameObj
 ### 查看命令详细用法
 
 ```bash
-AIBridgeCLI Help --command "GameObjectCommand_Find" --raw
+AIBridgeCLI GameObjectCommand_Find --help
 ```
 
 返回包含：
@@ -105,7 +105,6 @@ AIBridgeCLI Help --command "GameObjectCommand_Find" --raw
 - 使用示例
 
 通常来说使用一个命令前，你都要查询一下该命令的详细用法（除非你之前查询过）
-Compile没有Help，直接使用即可
 
 <!-- AUTO-GENERATED-COMMANDS-START -->
 ## 命令分类

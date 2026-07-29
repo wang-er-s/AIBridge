@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Globalization;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
@@ -23,14 +24,24 @@ namespace AIBridge.Runtime
         public AIBridgeCommandContext(
             AIBridgeSelfCommandExecuteRequest request,
             Func<bool> isClosed)
+            : this(request, isClosed, AIBridgeCommandHost.Player)
+        {
+        }
+
+        public AIBridgeCommandContext(
+            AIBridgeSelfCommandExecuteRequest request,
+            Func<bool> isClosed,
+            AIBridgeCommandHost host)
         {
             Request = request;
             Parameters = new AIBridgeParameterGetter(request == null ? null : request.parameters);
             _isClosed = isClosed;
+            Host = host ?? AIBridgeCommandHost.Player;
         }
 
         public AIBridgeSelfCommandExecuteRequest Request { get; private set; }
         public AIBridgeParameterGetter Parameters { get; private set; }
+        public AIBridgeCommandHost Host { get; private set; }
         public bool IsClosed { get { return _isClosed != null && _isClosed(); } }
     }
 
@@ -296,15 +307,15 @@ namespace AIBridge.Runtime
 
         private static void RegisterBuiltIns()
         {
-            Register("EditorCommand_Log", AIBridgeLogCommands.Log);
-            Register("Log", AIBridgeLogCommands.GetLogs);
-            Register("GetLogsCommand_StartCapture", AIBridgeLogCommands.StartCapture);
-            Register("GetLogsCommand_StopCapture", AIBridgeLogCommands.StopCapture);
-            Register("InputSimulationCommand_Click", AIBridgeInputCommands.Click);
-            Register("InputSimulationCommand_Drag", AIBridgeInputCommands.Drag);
-            Register("InputSimulationCommand_LongPress", AIBridgeInputCommands.LongPress);
-            Register("ScreenshotCommand_Image", AIBridgeScreenshotCommands.Image);
-            Register("ScreenshotCommand_Gif", AIBridgeScreenshotCommands.Gif);
+            Register("EditorCommand_Log", AIBridgeLogCommands.ExecuteLog);
+            Register("Log", AIBridgeLogCommands.ExecuteGetLogs);
+            Register("GetLogsCommand_StartCapture", AIBridgeLogCommands.ExecuteStartCapture);
+            Register("GetLogsCommand_StopCapture", AIBridgeLogCommands.ExecuteStopCapture);
+            Register("InputSimulationCommand_Click", AIBridgeInputCommands.ExecuteClick);
+            Register("InputSimulationCommand_Drag", AIBridgeInputCommands.ExecuteDrag);
+            Register("InputSimulationCommand_LongPress", AIBridgeInputCommands.ExecuteLongPress);
+            Register("ScreenshotCommand_Image", AIBridgeScreenshotCommands.ExecuteImage);
+            Register("ScreenshotCommand_Gif", AIBridgeScreenshotCommands.ExecuteGif);
         }
     }
 
@@ -450,30 +461,104 @@ namespace AIBridge.Runtime
         }
     }
 
-    internal static class AIBridgeLogCommands
+    public static class AIBridgeLogCommands
     {
-        public static IEnumerator Log(AIBridgeCommandContext context)
+        [AIBridge(
+            "向 Unity 控制台输出日志消息",
+            "AIBridgeCLI EditorCommand_Log --message \"Hello World\"",
+            "EditorCommand_Log")]
+        public static IEnumerator Log(
+            [Description("要记录的消息")] string message,
+            [Description("日志类型：Log, Warning, Error")] string logType = "Log",
+            [Description("手机 Runtime URL；为空时在 Editor 执行")] string url = null,
+            [Description("手机 Runtime 执行超时，单位毫秒")]
+            int runtimeTimeout = AIBridgeProtocol.DefaultExecutionTimeoutMs)
+        {
+            yield return ToCommandOutcome(AIBridgeLogService.Emit(message, logType));
+        }
+
+        [AIBridge("从 Unity 编辑器获取控制台日志",
+            @"默认模式：获取Unity控制台的历史日志（不精确，无时间戳）
+精准模式：配合 StartCapture/StopCapture 使用，可获取精确时间段的日志（带毫秒级时间戳）
+
+精准模式使用流程：
+1. AIBridgeCLI GetLogsCommand_StartCapture  # 开始捕获
+2. 执行需要监控的操作
+3. AIBridgeCLI Log --count 100  # 获取捕获的日志（带时间戳）
+4. AIBridgeCLI GetLogsCommand_StopCapture  # 停止捕获
+
+示例：
+AIBridgeCLI Log --count 50
+AIBridgeCLI Log --logType Error --count 20
+AIBridgeCLI Log --filter ""NullReference"" --count 30",
+            "Log")]
+        public static IEnumerator GetLogs(
+            [Description("日志类型过滤器：All, Error, Warning, Log")] string logType = "All",
+            [Description("文本过滤器（子字符串匹配）")] string filter = null,
+            [Description("返回的最大日志数量")] int count = 50,
+            [Description("手机 Runtime URL；为空时在 Editor 执行")] string url = null,
+            [Description("手机 Runtime 执行超时，单位毫秒")]
+            int runtimeTimeout = AIBridgeProtocol.DefaultExecutionTimeoutMs)
+        {
+            yield return ToCommandOutcome(AIBridgeLogService.GetLogs(
+                logType,
+                filter,
+                count,
+                AIBridgeCommandHost.Current.UseEditorLogHistory));
+        }
+
+        [AIBridge("开始捕获日志到缓冲区（精准模式），捕获的日志带毫秒级时间戳",
+            @"用于精确监控某段时间的日志输出。开启后，使用 Log 命令获取的日志将带有精确时间戳。
+
+AIBridgeCLI GetLogsCommand_StartCapture",
+            "GetLogsCommand_StartCapture")]
+        public static IEnumerator StartCapture(
+            [Description("手机 Runtime URL；为空时在 Editor 执行")] string url = null,
+            [Description("手机 Runtime 执行超时，单位毫秒")]
+            int runtimeTimeout = AIBridgeProtocol.DefaultExecutionTimeoutMs)
+        {
+            yield return ToCommandOutcome(AIBridgeLogService.StartCapture());
+        }
+
+        [AIBridge("停止捕获日志，返回捕获的日志总数",
+            @"停止精准模式的日志捕获。
+
+AIBridgeCLI GetLogsCommand_StopCapture",
+            "GetLogsCommand_StopCapture")]
+        public static IEnumerator StopCapture(
+            [Description("手机 Runtime URL；为空时在 Editor 执行")] string url = null,
+            [Description("手机 Runtime 执行超时，单位毫秒")]
+            int runtimeTimeout = AIBridgeProtocol.DefaultExecutionTimeoutMs)
+        {
+            yield return ToCommandOutcome(AIBridgeLogService.StopCapture());
+        }
+
+        public static IEnumerator ExecuteLog(AIBridgeCommandContext context)
         {
             var message = context.Parameters.GetRequiredString("message");
             var logType = context.Parameters.GetString("logType", "Log");
             yield return ToCommandOutcome(AIBridgeLogService.Emit(message, logType));
         }
 
-        public static IEnumerator GetLogs(AIBridgeCommandContext context)
+        public static IEnumerator ExecuteGetLogs(AIBridgeCommandContext context)
         {
             var logType = context.Parameters.GetString("logType", "All");
             var filter = context.Parameters.GetString("filter", null);
             var count = context.Parameters.GetInt32("count", 50);
             yield return ToCommandOutcome(
-                AIBridgeLogService.GetLogs(logType, filter, count, false));
+                AIBridgeLogService.GetLogs(
+                    logType,
+                    filter,
+                    count,
+                    context.Host.UseEditorLogHistory));
         }
 
-        public static IEnumerator StartCapture(AIBridgeCommandContext context)
+        public static IEnumerator ExecuteStartCapture(AIBridgeCommandContext context)
         {
             yield return ToCommandOutcome(AIBridgeLogService.StartCapture());
         }
 
-        public static IEnumerator StopCapture(AIBridgeCommandContext context)
+        public static IEnumerator ExecuteStopCapture(AIBridgeCommandContext context)
         {
             yield return ToCommandOutcome(AIBridgeLogService.StopCapture());
         }

@@ -52,7 +52,9 @@ public static class RequestBuilder
         {
             try
             {
-                var parsed = JsonConvert.DeserializeObject<object>(value);
+                var parsed = value.StartsWith("[")
+                    ? JsonConvert.DeserializeObject<object[]>(value)
+                    : JsonConvert.DeserializeObject<object>(value);
                 if (parsed != null)
                 {
                     return parsed;

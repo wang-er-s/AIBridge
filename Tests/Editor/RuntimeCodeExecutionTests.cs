@@ -130,23 +130,73 @@ namespace AIBridge.Editor.Tests
         {
             var methods = new[]
             {
-                typeof(EditorCommand).GetMethod(nameof(EditorCommand.Log)),
-                typeof(GetLogsCommand).GetMethod(nameof(GetLogsCommand.Log)),
-                typeof(GetLogsCommand).GetMethod(nameof(GetLogsCommand.StartCapture)),
-                typeof(GetLogsCommand).GetMethod(nameof(GetLogsCommand.StopCapture)),
-                typeof(InputSimulationCommand).GetMethod(nameof(InputSimulationCommand.Click)),
-                typeof(InputSimulationCommand).GetMethod(nameof(InputSimulationCommand.Drag)),
-                typeof(InputSimulationCommand).GetMethod(nameof(InputSimulationCommand.LongPress)),
-                typeof(ScreenshotCommand).GetMethod(nameof(ScreenshotCommand.Image)),
-                typeof(ScreenshotCommand).GetMethod(nameof(ScreenshotCommand.Gif))
+                typeof(AIBridgeLogCommands).GetMethod(nameof(AIBridgeLogCommands.Log)),
+                typeof(AIBridgeLogCommands).GetMethod(nameof(AIBridgeLogCommands.GetLogs)),
+                typeof(AIBridgeLogCommands).GetMethod(nameof(AIBridgeLogCommands.StartCapture)),
+                typeof(AIBridgeLogCommands).GetMethod(nameof(AIBridgeLogCommands.StopCapture)),
+                typeof(AIBridgeInputCommands).GetMethod(nameof(AIBridgeInputCommands.Click)),
+                typeof(AIBridgeInputCommands).GetMethod(nameof(AIBridgeInputCommands.Drag)),
+                typeof(AIBridgeInputCommands).GetMethod(nameof(AIBridgeInputCommands.LongPress)),
+                typeof(AIBridgeScreenshotCommands).GetMethod(nameof(AIBridgeScreenshotCommands.Image)),
+                typeof(AIBridgeScreenshotCommands).GetMethod(nameof(AIBridgeScreenshotCommands.Gif))
             };
 
             foreach (var method in methods)
             {
                 Assert.That(method, Is.Not.Null);
+                Assert.That(method.DeclaringType.Assembly, Is.EqualTo(typeof(AIBridgeProtocol).Assembly));
+                Assert.That(method.GetCustomAttribute<AIBridgeAttribute>(), Is.Not.Null);
                 Assert.That(method.GetParameters(), Has.Some.Property("Name").EqualTo("url"));
                 Assert.That(method.GetParameters(), Has.Some.Property("Name").EqualTo("runtimeTimeout"));
             }
+        }
+
+        [TestCase("EditorCommand_Log", typeof(AIBridgeLogCommands), nameof(AIBridgeLogCommands.Log))]
+        [TestCase("Log", typeof(AIBridgeLogCommands), nameof(AIBridgeLogCommands.GetLogs))]
+        [TestCase("GetLogsCommand_StartCapture", typeof(AIBridgeLogCommands), nameof(AIBridgeLogCommands.StartCapture))]
+        [TestCase("GetLogsCommand_StopCapture", typeof(AIBridgeLogCommands), nameof(AIBridgeLogCommands.StopCapture))]
+        [TestCase("InputSimulationCommand_Click", typeof(AIBridgeInputCommands), nameof(AIBridgeInputCommands.Click))]
+        [TestCase("InputSimulationCommand_Drag", typeof(AIBridgeInputCommands), nameof(AIBridgeInputCommands.Drag))]
+        [TestCase("InputSimulationCommand_LongPress", typeof(AIBridgeInputCommands), nameof(AIBridgeInputCommands.LongPress))]
+        [TestCase("ScreenshotCommand_Image", typeof(AIBridgeScreenshotCommands), nameof(AIBridgeScreenshotCommands.Image))]
+        [TestCase("ScreenshotCommand_Gif", typeof(AIBridgeScreenshotCommands), nameof(AIBridgeScreenshotCommands.Gif))]
+        public void CommandRegistry_MigratedCommandsUseRuntimeTypedMethods(
+            string commandName,
+            Type declaringType,
+            string methodName)
+        {
+            Assert.That(CommandRegistry.TryGetCommand(commandName, out var entry), Is.True);
+            Assert.That(entry.Method.DeclaringType, Is.EqualTo(declaringType));
+            Assert.That(entry.Method.Name, Is.EqualTo(methodName));
+            Assert.That(entry.Parameters, Has.None.Property("ParameterType")
+                .EqualTo(typeof(AIBridgeCommandContext)));
+        }
+
+        [Test]
+        public void CommandParamBinder_RuntimeTypedMethod_BindsBusinessAndTransportParameters()
+        {
+            Assert.That(
+                CommandRegistry.TryGetCommand("InputSimulationCommand_LongPress", out var entry),
+                Is.True);
+            var request = new CommandRequest
+            {
+                @params = new Dictionary<string, object>
+                {
+                    { "path", "Canvas/Button" },
+                    { "duration", 1250L },
+                    { "url", "http://device:8080" },
+                    { "runtimeTimeout", 20000L }
+                }
+            };
+
+            Assert.That(
+                CommandParamBinder.TryBind(entry, request, out var args, out var error),
+                Is.True,
+                error);
+            Assert.That(args[0], Is.EqualTo("Canvas/Button"));
+            Assert.That(args[3], Is.EqualTo(1250));
+            Assert.That(args[4], Is.EqualTo("http://device:8080"));
+            Assert.That(args[5], Is.EqualTo(20000));
         }
 
         [Test]

@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
+using AIBridge.Runtime;
 using UnityEditor;
 
 namespace AIBridge.Editor
@@ -100,25 +101,28 @@ namespace AIBridge.Editor
 
         private static void RegisterBuiltInCommands()
         {
+            EditorAIBridgeCommandHost.Configure();
+
             Register(typeof(CompileCommand), nameof(CompileCommand.Start));
             Register(typeof(CompileCommand), nameof(CompileCommand.Status));
+            Register(typeof(CommandCatalogCommand), nameof(CommandCatalogCommand.List));
 
             Register(typeof(EditorCommand), nameof(EditorCommand.Play));
             Register(typeof(EditorCommand), nameof(EditorCommand.Stop));
             Register(typeof(EditorCommand), nameof(EditorCommand.Pause));
             Register(typeof(EditorCommand), nameof(EditorCommand.GetState));
-            Register(typeof(EditorCommand), nameof(EditorCommand.Log));
 
-            Register(typeof(GetLogsCommand), nameof(GetLogsCommand.Log));
-            Register(typeof(GetLogsCommand), nameof(GetLogsCommand.StartCapture));
-            Register(typeof(GetLogsCommand), nameof(GetLogsCommand.StopCapture));
+            Register(typeof(AIBridgeLogCommands), nameof(AIBridgeLogCommands.Log));
+            Register(typeof(AIBridgeLogCommands), nameof(AIBridgeLogCommands.GetLogs));
+            Register(typeof(AIBridgeLogCommands), nameof(AIBridgeLogCommands.StartCapture));
+            Register(typeof(AIBridgeLogCommands), nameof(AIBridgeLogCommands.StopCapture));
 
-            Register(typeof(InputSimulationCommand), nameof(InputSimulationCommand.Click));
-            Register(typeof(InputSimulationCommand), nameof(InputSimulationCommand.Drag));
-            Register(typeof(InputSimulationCommand), nameof(InputSimulationCommand.LongPress));
+            Register(typeof(AIBridgeInputCommands), nameof(AIBridgeInputCommands.Click));
+            Register(typeof(AIBridgeInputCommands), nameof(AIBridgeInputCommands.Drag));
+            Register(typeof(AIBridgeInputCommands), nameof(AIBridgeInputCommands.LongPress));
 
-            Register(typeof(ScreenshotCommand), nameof(ScreenshotCommand.Image));
-            Register(typeof(ScreenshotCommand), nameof(ScreenshotCommand.Gif));
+            Register(typeof(AIBridgeScreenshotCommands), nameof(AIBridgeScreenshotCommands.Image));
+            Register(typeof(AIBridgeScreenshotCommands), nameof(AIBridgeScreenshotCommands.Gif));
             Register(typeof(global::CodeExecuteCommand), nameof(global::CodeExecuteCommand.Execute));
 
             AIBridgeLogger.LogInfo($"[CommandRegistry] Registered {_registry.Count} commands.");

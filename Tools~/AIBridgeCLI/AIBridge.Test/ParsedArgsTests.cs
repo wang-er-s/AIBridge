@@ -41,6 +41,24 @@ namespace AIBridgeCLI.Tests
         }
 
         [Fact]
+        public void Parse_ShortHelpFlag_SetsTrue()
+        {
+            ParsedArgs? result = ParsedArgs.Parse(["GameObjectCommand_Find", "-h"]);
+
+            Assert.True(result.Help);
+            Assert.Equal("true", result.Options["help"]);
+        }
+
+        [Fact]
+        public void Parse_HelpBeforeCommand_SetsCommandName()
+        {
+            ParsedArgs? result = ParsedArgs.Parse(["--help", "Commands"]);
+
+            Assert.True(result.Help);
+            Assert.Equal("Commands", result.CommandName);
+        }
+
+        [Fact]
         public void Parse_GlobalOption_SetsProperty()
         {
             ParsedArgs? result = ParsedArgs.Parse(new[] { "GameObjectCommand_Find", "--timeout", "10000" });

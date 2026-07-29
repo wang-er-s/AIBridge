@@ -58,19 +58,5 @@ namespace AIBridge.Editor
             });
         }
 
-        [AIBridge("向 Unity 控制台输出日志消息",
-            "AIBridgeCLI EditorCommand_Log --message \"Hello World\"")]
-        public static IEnumerator Log(
-            [Description("要记录的消息")] string message,
-            [Description("日志类型：Log, Warning, Error")] string logType = "Log",
-            [Description("手机 Runtime URL；为空时在 Editor 执行")] string url = null,
-            [Description("手机 Runtime 执行超时，单位毫秒")]
-            int runtimeTimeout = AIBridgeProtocol.DefaultExecutionTimeoutMs)
-        {
-            var result = AIBridgeLogService.Emit(message, logType);
-            yield return result.Success
-                ? CommandResult.Success(result.Data)
-                : CommandResult.Failure(result.ErrorMessage);
-        }
     }
 }
